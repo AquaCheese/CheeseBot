@@ -150,6 +150,19 @@ class Database {
                 PRIMARY KEY (user_id, guild_id)
             )
         `);
+
+        // Birthdays table
+        this.db.run(`
+            CREATE TABLE IF NOT EXISTS birthdays (
+                user_id TEXT,
+                guild_id TEXT,
+                day INTEGER,
+                month INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, guild_id)
+            )
+        `);
     }
 
     // Server configuration methods

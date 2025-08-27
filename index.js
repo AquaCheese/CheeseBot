@@ -189,7 +189,81 @@ const commands = [
     new SlashCommandBuilder()
         .setName('diagnose')
         .setDescription('Run comprehensive diagnostics to check bot permissions and functionality')
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+    // Public commands (no permissions required)
+    new SlashCommandBuilder()
+        .setName('ascii')
+        .setDescription('Convert text to ASCII art')
+        .addStringOption(option =>
+            option.setName('text')
+                .setDescription('Text to convert to ASCII art')
+                .setRequired(true)
+                .setMaxLength(20)),
+
+    new SlashCommandBuilder()
+        .setName('suggest')
+        .setDescription('Submit a suggestion to the server staff')
+        .addStringOption(option =>
+            option.setName('suggestion')
+                .setDescription('Your suggestion for the server')
+                .setRequired(true)
+                .setMaxLength(1000)),
+
+    new SlashCommandBuilder()
+        .setName('report')
+        .setDescription('Report an issue or user to the moderators')
+        .addStringOption(option =>
+            option.setName('type')
+                .setDescription('Type of report')
+                .setRequired(true)
+                .addChoices(
+                    { name: 'User Behavior', value: 'user' },
+                    { name: 'Bug/Technical Issue', value: 'bug' },
+                    { name: 'Content Issue', value: 'content' },
+                    { name: 'Other', value: 'other' }
+                ))
+        .addStringOption(option =>
+            option.setName('description')
+                .setDescription('Detailed description of the issue')
+                .setRequired(true)
+                .setMaxLength(1000))
+        .addUserOption(option =>
+            option.setName('user')
+                .setDescription('User involved (if applicable)')
+                .setRequired(false)),
+
+    new SlashCommandBuilder()
+        .setName('birthday')
+        .setDescription('Manage your birthday settings')
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('set')
+                .setDescription('Set your birthday')
+                .addIntegerOption(option =>
+                    option.setName('day')
+                        .setDescription('Day of the month (1-31)')
+                        .setRequired(true)
+                        .setMinValue(1)
+                        .setMaxValue(31))
+                .addIntegerOption(option =>
+                    option.setName('month')
+                        .setDescription('Month (1-12)')
+                        .setRequired(true)
+                        .setMinValue(1)
+                        .setMaxValue(12)))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('view')
+                .setDescription('View your birthday or someone else\'s')
+                .addUserOption(option =>
+                    option.setName('user')
+                        .setDescription('User to view birthday for (optional)')
+                        .setRequired(false)))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('remove')
+                .setDescription('Remove your birthday from the system'))
 ];
 
 // When the client is ready, run this code (only once)
@@ -235,7 +309,7 @@ async function handleSlashCommand(interaction) {
 
     try {
         // Commands that don't require authentication
-        const publicCommands = ['login', 'status', 'afk'];
+        const publicCommands = ['login', 'status', 'afk', 'ascii', 'suggest', 'report', 'birthday'];
         
         if (!publicCommands.includes(commandName)) {
             // Special check for user command - only primary admin can use it
@@ -313,6 +387,22 @@ async function handleSlashCommand(interaction) {
             
             case 'diagnose':
                 await handleDiagnoseCommand(interaction);
+                break;
+            
+            case 'ascii':
+                await handleAsciiCommand(interaction);
+                break;
+            
+            case 'suggest':
+                await handleSuggestCommand(interaction);
+                break;
+            
+            case 'report':
+                await handleReportCommand(interaction);
+                break;
+            
+            case 'birthday':
+                await handleBirthdayCommand(interaction);
                 break;
             
             default:
@@ -1092,6 +1182,393 @@ async function handleUserList(interaction) {
     embed.setFooter({ text: `Total: ${authorizedUsers.length} authorized user${authorizedUsers.length !== 1 ? 's' : ''}` });
     
     await interaction.reply({ embeds: [embed], ephemeral: true });
+}
+
+// New public command handlers
+async function handleAsciiCommand(interaction) {
+    const text = interaction.options.getString('text');
+    
+    try {
+        // Simple ASCII art conversion using basic characters
+        const asciiArt = generateAsciiArt(text);
+        
+        const embed = new EmbedBuilder()
+            .setTitle('🎨 ASCII Art')
+            .setDescription(`\`\`\`\n${asciiArt}\n\`\`\``)
+            .setColor(0x3498DB)
+            .setFooter({ text: `Requested by ${interaction.user.tag}` })
+            .setTimestamp();
+        
+        await interaction.reply({ embeds: [embed] });
+        
+    } catch (error) {
+        console.error('ASCII command error:', error);
+        
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ Error')
+            .setDescription('There was an error generating ASCII art. Please try with shorter text.')
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+}
+
+async function handleSuggestCommand(interaction) {
+    const suggestion = interaction.options.getString('suggestion');
+    const user = interaction.user;
+    
+    try {
+        // Get server config to find logs channel
+        const config = await database.getServerConfig(interaction.guild.id);
+        
+        const embed = new EmbedBuilder()
+            .setTitle('💡 New Suggestion')
+            .setDescription(suggestion)
+            .setColor(0xF39C12)
+            .addFields(
+                { name: '👤 Submitted by', value: `${user.tag} (${user.id})`, inline: true },
+                { name: '📅 Date', value: new Date().toLocaleString(), inline: true },
+                { name: '📍 Channel', value: `<#${interaction.channel.id}>`, inline: true }
+            )
+            .setThumbnail(user.displayAvatarURL({ dynamic: true }))
+            .setTimestamp();
+        
+        // Try to send to logs channel if configured
+        if (config && config.logs_channel_id) {
+            const logsChannel = interaction.guild.channels.cache.get(config.logs_channel_id);
+            if (logsChannel) {
+                await logsChannel.send({ embeds: [embed] });
+            }
+        }
+        
+        // Confirmation to user
+        const confirmEmbed = new EmbedBuilder()
+            .setTitle('✅ Suggestion Submitted')
+            .setDescription('Your suggestion has been sent to the server staff. Thank you for your feedback!')
+            .setColor(0x2ECC71)
+            .setFooter({ text: 'Suggestions help improve the server!' });
+        
+        await interaction.reply({ embeds: [confirmEmbed], ephemeral: true });
+        
+    } catch (error) {
+        console.error('Suggest command error:', error);
+        
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ Error')
+            .setDescription('There was an error submitting your suggestion. Please try again later.')
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+}
+
+async function handleReportCommand(interaction) {
+    const type = interaction.options.getString('type');
+    const description = interaction.options.getString('description');
+    const reportedUser = interaction.options.getUser('user');
+    const reporter = interaction.user;
+    
+    try {
+        // Get server config to find logs channel
+        const config = await database.getServerConfig(interaction.guild.id);
+        
+        const typeEmojis = {
+            'user': '👤',
+            'bug': '🐛',
+            'content': '📝',
+            'other': '❓'
+        };
+        
+        const typeNames = {
+            'user': 'User Behavior',
+            'bug': 'Bug/Technical Issue',
+            'content': 'Content Issue',
+            'other': 'Other'
+        };
+        
+        const embed = new EmbedBuilder()
+            .setTitle(`${typeEmojis[type]} Report: ${typeNames[type]}`)
+            .setDescription(description)
+            .setColor(0xE74C3C)
+            .addFields(
+                { name: '📍 Reporter', value: `${reporter.tag} (${reporter.id})`, inline: true },
+                { name: '📅 Date', value: new Date().toLocaleString(), inline: true },
+                { name: '📍 Channel', value: `<#${interaction.channel.id}>`, inline: true }
+            )
+            .setThumbnail(reporter.displayAvatarURL({ dynamic: true }))
+            .setTimestamp();
+        
+        if (reportedUser) {
+            embed.addFields({
+                name: '⚠️ Reported User',
+                value: `${reportedUser.tag} (${reportedUser.id})`,
+                inline: false
+            });
+        }
+        
+        // Try to send to logs channel if configured
+        if (config && config.logs_channel_id) {
+            const logsChannel = interaction.guild.channels.cache.get(config.logs_channel_id);
+            if (logsChannel) {
+                await logsChannel.send({ 
+                    content: '🚨 **NEW REPORT** - Staff attention required',
+                    embeds: [embed] 
+                });
+            }
+        }
+        
+        // Confirmation to user
+        const confirmEmbed = new EmbedBuilder()
+            .setTitle('✅ Report Submitted')
+            .setDescription('Your report has been sent to the moderation team. They will review it as soon as possible.')
+            .setColor(0x2ECC71)
+            .setFooter({ text: 'Thank you for helping keep the server safe!' });
+        
+        await interaction.reply({ embeds: [confirmEmbed], ephemeral: true });
+        
+    } catch (error) {
+        console.error('Report command error:', error);
+        
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ Error')
+            .setDescription('There was an error submitting your report. Please try again later.')
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+}
+
+async function handleBirthdayCommand(interaction) {
+    const subcommand = interaction.options.getSubcommand();
+    const user = interaction.user;
+    
+    try {
+        switch (subcommand) {
+            case 'set':
+                await handleBirthdaySet(interaction);
+                break;
+            
+            case 'view':
+                await handleBirthdayView(interaction);
+                break;
+            
+            case 'remove':
+                await handleBirthdayRemove(interaction);
+                break;
+            
+            default:
+                await interaction.reply({ content: 'Unknown subcommand!', ephemeral: true });
+        }
+    } catch (error) {
+        console.error('Birthday command error:', error);
+        
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ Error')
+            .setDescription('There was an error processing your birthday request.')
+            .setColor(0xE74C3C);
+        
+        if (interaction.replied || interaction.deferred) {
+            await interaction.followUp({ embeds: [errorEmbed], ephemeral: true });
+        } else {
+            await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+        }
+    }
+}
+
+async function handleBirthdaySet(interaction) {
+    const day = interaction.options.getInteger('day');
+    const month = interaction.options.getInteger('month');
+    const user = interaction.user;
+    
+    // Validate date
+    const daysInMonth = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    if (day > daysInMonth[month - 1]) {
+        const embed = new EmbedBuilder()
+            .setTitle('❌ Invalid Date')
+            .setDescription(`Month ${month} doesn't have ${day} days!`)
+            .setColor(0xE74C3C);
+        
+        return await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+    
+    const monthNames = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    
+    try {
+        // Store birthday in database
+        await database.run(
+            'INSERT OR REPLACE INTO birthdays (user_id, guild_id, day, month) VALUES (?, ?, ?, ?)',
+            [user.id, interaction.guild.id, day, month]
+        );
+        
+        const embed = new EmbedBuilder()
+            .setTitle('🎂 Birthday Set!')
+            .setDescription(`Your birthday has been set to **${monthNames[month - 1]} ${day}**`)
+            .setColor(0x2ECC71)
+            .setFooter({ text: 'The server will be notified on your special day!' })
+            .setTimestamp();
+        
+        await interaction.reply({ embeds: [embed], ephemeral: true });
+        
+    } catch (error) {
+        console.error('Birthday set error:', error);
+        
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ Database Error')
+            .setDescription('There was an error saving your birthday. Please try again.')
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+}
+
+async function handleBirthdayView(interaction) {
+    const targetUser = interaction.options.getUser('user') || interaction.user;
+    
+    try {
+        const birthday = await database.get(
+            'SELECT day, month FROM birthdays WHERE user_id = ? AND guild_id = ?',
+            [targetUser.id, interaction.guild.id]
+        );
+        
+        if (!birthday) {
+            const embed = new EmbedBuilder()
+                .setTitle('🎂 No Birthday Set')
+                .setDescription(targetUser.id === interaction.user.id 
+                    ? 'You haven\'t set your birthday yet! Use `/birthday set` to add it.'
+                    : `${targetUser.tag} hasn't set their birthday yet.`)
+                .setColor(0xF39C12);
+            
+            return await interaction.reply({ embeds: [embed], ephemeral: true });
+        }
+        
+        const monthNames = [
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'
+        ];
+        
+        const embed = new EmbedBuilder()
+            .setTitle('🎂 Birthday Information')
+            .setDescription(`**${targetUser.tag}**'s birthday is on **${monthNames[birthday.month - 1]} ${birthday.day}**`)
+            .setColor(0x9B59B6)
+            .setThumbnail(targetUser.displayAvatarURL({ dynamic: true }))
+            .setTimestamp();
+        
+        await interaction.reply({ embeds: [embed] });
+        
+    } catch (error) {
+        console.error('Birthday view error:', error);
+        
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ Database Error')
+            .setDescription('There was an error retrieving birthday information.')
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+}
+
+async function handleBirthdayRemove(interaction) {
+    const user = interaction.user;
+    
+    try {
+        const result = await database.run(
+            'DELETE FROM birthdays WHERE user_id = ? AND guild_id = ?',
+            [user.id, interaction.guild.id]
+        );
+        
+        if (result.changes === 0) {
+            const embed = new EmbedBuilder()
+                .setTitle('❌ No Birthday Found')
+                .setDescription('You don\'t have a birthday set in this server.')
+                .setColor(0xF39C12);
+            
+            return await interaction.reply({ embeds: [embed], ephemeral: true });
+        }
+        
+        const embed = new EmbedBuilder()
+            .setTitle('🗑️ Birthday Removed')
+            .setDescription('Your birthday has been removed from this server.')
+            .setColor(0x95A5A6)
+            .setTimestamp();
+        
+        await interaction.reply({ embeds: [embed], ephemeral: true });
+        
+    } catch (error) {
+        console.error('Birthday remove error:', error);
+        
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ Database Error')
+            .setDescription('There was an error removing your birthday.')
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+}
+
+// ASCII art generator function
+function generateAsciiArt(text) {
+    // Simple ASCII art font (block letters)
+    const font = {
+        'A': ['  ▄▀█  ', ' █▀█  ', ' ▀ █▀ '],
+        'B': [' █▄▄▄ ', ' █▀▀▄ ', ' ▀▄▄▀ '],
+        'C': ['  ▄▀▀ ', ' █    ', '  ▀▄▄ '],
+        'D': [' █▀▀▄ ', ' █  █ ', ' ▀▄▄▀ '],
+        'E': [' █▀▀▀ ', ' █▀▀  ', ' ▀▄▄▄ '],
+        'F': [' █▀▀▀ ', ' █▀▀  ', ' ▀    '],
+        'G': ['  ▄▀▀ ', ' █ ▀█ ', '  ▀▄▀ '],
+        'H': [' █  █ ', ' █▀▀█ ', ' ▀  ▀ '],
+        'I': [' ▀█▀ ', '  █  ', ' ▄█▄ '],
+        'J': ['   █ ', '   █ ', ' ▀▄▀ '],
+        'K': [' █ ▄▀ ', ' █▀▄  ', ' ▀ ▀▄ '],
+        'L': [' █    ', ' █    ', ' ▀▄▄▄ '],
+        'M': [' █▄▄█ ', ' █▀▀█ ', ' ▀  ▀ '],
+        'N': [' █▄ █ ', ' █▀▀█ ', ' ▀  ▀ '],
+        'O': ['  ▄▀▄ ', ' █   █ ', '  ▀▄▀ '],
+        'P': [' █▀▀▄ ', ' █▀▀  ', ' ▀    '],
+        'Q': ['  ▄▀▄ ', ' █   █ ', '  ▀▄▀▄'],
+        'R': [' █▀▀▄ ', ' █▀▄  ', ' ▀ ▀▄ '],
+        'S': ['  ▄▀▀ ', '  ▀▀▄ ', ' ▄▄▀  '],
+        'T': [' ▀█▀ ', '  █  ', ' ▄█▄ '],
+        'U': [' █  █ ', ' █  █ ', '  ▀▀  '],
+        'V': [' █  █ ', ' █  █ ', '  ▀▀  '],
+        'W': [' █  █ ', ' █▄▄█ ', ' ▀▀▀▀ '],
+        'X': [' █  █ ', '  ▀▀  ', ' ▄  ▄ '],
+        'Y': [' █  █ ', '  ▀▀  ', '  ▄▄  '],
+        'Z': [' ▀▀▀█ ', '  ▄▀  ', ' █▄▄▄ '],
+        ' ': ['     ', '     ', '     '],
+        '!': ['  █  ', '  █  ', '  ▄  '],
+        '?': [' ▀▀▄ ', '  ▄▀ ', '  ▄  '],
+        '0': ['  ▄▀▄ ', ' █   █ ', '  ▀▄▀ '],
+        '1': ['  ▄█  ', '   █  ', ' ▄▄█▄▄'],
+        '2': [' ▀▀▄ ', '  ▄▀ ', ' █▄▄▄'],
+        '3': [' ▀▀▄ ', '  ▀▄ ', ' ▄▄▀ '],
+        '4': [' █  █ ', ' █▀▀█ ', '   ▀ '],
+        '5': [' █▀▀▀ ', ' ▀▀▄ ', ' ▄▄▀ '],
+        '6': ['  ▄▀▀ ', ' █▀▄ ', '  ▀▀ '],
+        '7': [' ▀▀▀█ ', '   ▄▀ ', '  ▀  '],
+        '8': ['  ▄▀▄ ', '  ▀▄▀ ', '  ▀▀ '],
+        '9': ['  ▄▀▄ ', '  ▀▄█ ', '  ▄▀ ']
+    };
+    
+    const lines = ['', '', ''];
+    
+    for (let char of text.toUpperCase()) {
+        if (font[char]) {
+            for (let i = 0; i < 3; i++) {
+                lines[i] += font[char][i];
+            }
+        } else {
+            // Unknown character, use space
+            for (let i = 0; i < 3; i++) {
+                lines[i] += '     ';
+            }
+        }
+    }
+    
+    return lines.join('\n');
 }
 
 // Handle select menu interactions

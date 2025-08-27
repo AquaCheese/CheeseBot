@@ -82,6 +82,15 @@ Your bot needs these permissions:
 - `/warn <user> [reason]` - Warn a user
 - `/warnings <user>` - Check user warnings
 
+### Public Commands (Available to Everyone)
+- `/ascii <text>` - Convert text to ASCII art (max 20 characters)
+- `/suggest <suggestion>` - Submit a suggestion to server staff
+- `/report <type> <description> [user]` - Report issues or users to moderators
+  - Types: User Behavior, Bug/Technical Issue, Content Issue, Other
+- `/birthday set <day> <month>` - Set your birthday
+- `/birthday view [user]` - View someone's birthday (or your own)
+- `/birthday remove` - Remove your birthday from the system
+
 ## 🔧 Configuration Options
 
 ### Spam Protection
