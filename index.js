@@ -368,7 +368,68 @@ const commands = [
     new SlashCommandBuilder()
         .setName('unclaim')
         .setDescription('Unclaim the current ticket')
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+
+    // Counting System Commands
+    new SlashCommandBuilder()
+        .setName('countchannel')
+        .setDescription('Set or manage the counting channel for this server')
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('set')
+                .setDescription('Set the current channel as a counting channel')
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('remove')
+                .setDescription('Remove counting from the current channel')
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('reset')
+                .setDescription('Reset the count in the current counting channel')
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('info')
+                .setDescription('Show information about the current counting channel')
+        )
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+
+    new SlashCommandBuilder()
+        .setName('userstats')
+        .setDescription('View counting statistics for a user')
+        .addUserOption(option =>
+            option.setName('user')
+                .setDescription('User to view stats for (leave empty for yourself)')
+                .setRequired(false)
+        ),
+
+    new SlashCommandBuilder()
+        .setName('countleaderboard')
+        .setDescription('View the counting leaderboard for this server')
+        .addStringOption(option =>
+            option.setName('type')
+                .setDescription('Type of leaderboard to show')
+                .setRequired(false)
+                .addChoices(
+                    { name: 'Most Correct', value: 'correct' },
+                    { name: 'Highest Number', value: 'highest' },
+                    { name: 'Best Streak', value: 'streak' },
+                    { name: 'Best Accuracy', value: 'accuracy' }
+                )
+        ),
+
+    new SlashCommandBuilder()
+        .setName('counthistory')
+        .setDescription('View recent counting history for the current channel')
+        .addIntegerOption(option =>
+            option.setName('limit')
+                .setDescription('Number of recent entries to show (default: 10, max: 50)')
+                .setRequired(false)
+                .setMinValue(5)
+                .setMaxValue(50)
+        )
 ];
 
 // When the client is ready, run this code (only once)
@@ -841,7 +902,7 @@ async function handleSlashCommand(interaction) {
 
     try {
         // Commands that don't require authentication
-        const publicCommands = ['login', 'status', 'afk', 'ascii', 'suggest', 'report', 'birthday'];
+        const publicCommands = ['login', 'status', 'afk', 'ascii', 'suggest', 'report', 'birthday', 'userstats', 'countleaderboard', 'counthistory'];
         
         if (!publicCommands.includes(commandName)) {
             // Special check for user command - only primary admin can use it
@@ -988,6 +1049,23 @@ async function handleSlashCommand(interaction) {
             
             case 'unclaim':
                 await handleUnclaimCommand(interaction);
+                break;
+
+            // Counting System Commands
+            case 'countchannel':
+                await handleCountChannelCommand(interaction);
+                break;
+            
+            case 'userstats':
+                await handleUserStatsCommand(interaction);
+                break;
+            
+            case 'countleaderboard':
+                await handleCountLeaderboardCommand(interaction);
+                break;
+            
+            case 'counthistory':
+                await handleCountHistoryCommand(interaction);
                 break;
             
             default:
@@ -3773,6 +3851,11 @@ async function handleHelpCommand(interaction) {
                 inline: false
             },
             {
+                name: '🔢 Counting Commands',
+                value: '`/userstats` - View counting statistics for a user\n`/countleaderboard` - View server counting leaderboard\n`/counthistory` - View recent counting history',
+                inline: false
+            },
+            {
                 name: '🎨 Fun Commands',
                 value: '`/ascii` - Convert text to ASCII art',
                 inline: false
@@ -3822,7 +3905,12 @@ async function handleAdminHelpCommand(interaction) {
                 inline: false
             },
             {
-                name: '👥 User Management',
+                name: '� Counting Management',
+                value: '`/countchannel set` - Set counting channel\n`/countchannel remove` - Remove counting channel\n`/countchannel reset` - Reset count\n`/countchannel info` - Channel information',
+                inline: false
+            },
+            {
+                name: '�👥 User Management',
                 value: '`/user auth` - Manage bot access\n`/user grant` - Grant access\n`/user revoke` - Revoke access\n`/user list` - List authorized users\n`/clear` - Clear messages',
                 inline: false
             },
@@ -4407,6 +4495,17 @@ client.on(Events.MessageCreate, async message => {
         console.error('Error checking AFK status:', error);
     }
     
+    // Check if this is a counting channel and handle counting logic
+    try {
+        const countingChannel = await database.getCountingChannel(message.guild.id, message.channel.id);
+        if (countingChannel) {
+            await handleCountingMessage(message, countingChannel);
+            return; // Don't process moderation for counting messages
+        }
+    } catch (error) {
+        console.error('Error checking counting channel:', error);
+    }
+    
     // Check spam protection
     const isSpam = await moderationSystem.checkSpamProtection(message);
     if (isSpam) {
@@ -4564,6 +4663,534 @@ client.on(Events.Error, error => {
 process.on('unhandledRejection', error => {
     console.error('Unhandled promise rejection:', error);
 });
+
+// ===== COUNTING SYSTEM HANDLERS =====
+
+async function handleCountingMessage(message, countingChannel) {
+    try {
+        const content = message.content.trim();
+        
+        // Check if message is a number
+        const number = parseInt(content);
+        if (isNaN(number) || content !== number.toString()) {
+            // Not a number, delete the message
+            await message.delete();
+            
+            // Send ephemeral error message
+            const errorEmbed = new EmbedBuilder()
+                .setTitle('❌ Invalid Count')
+                .setDescription('Only numbers are allowed in this counting channel!')
+                .setColor(0xE74C3C);
+            
+            const errorMsg = await message.channel.send({ embeds: [errorEmbed] });
+            setTimeout(() => errorMsg.delete().catch(() => {}), 3000);
+            return;
+        }
+        
+        const expectedNumber = countingChannel.current_number + 1;
+        const isCorrect = number === expectedNumber;
+        const sameUser = countingChannel.last_user_id === message.author.id;
+        
+        // Check if same user is trying to count twice in a row
+        if (sameUser && countingChannel.current_number > 0) {
+            await message.delete();
+            
+            const errorEmbed = new EmbedBuilder()
+                .setTitle('❌ Same User')
+                .setDescription('You cannot count twice in a row! Wait for another user to count.')
+                .setColor(0xE74C3C);
+            
+            const errorMsg = await message.channel.send({ embeds: [errorEmbed] });
+            setTimeout(() => errorMsg.delete().catch(() => {}), 3000);
+            
+            // Record incorrect attempt
+            await database.addCountingHistory(
+                message.guild.id,
+                message.channel.id,
+                message.author.id,
+                message.author.username,
+                number,
+                expectedNumber,
+                false
+            );
+            
+            // Update user stats
+            const userStats = await database.getCountingStats(message.author.id, message.guild.id) || {
+                correct_count: 0,
+                incorrect_count: 0,
+                highest_number: 0,
+                streak: 0,
+                best_streak: 0
+            };
+            
+            await database.updateCountingStats(message.author.id, message.guild.id, {
+                incorrect_count: userStats.incorrect_count + 1,
+                streak: 0
+            });
+            
+            return;
+        }
+        
+        if (isCorrect) {
+            // Correct number!
+            await message.react('✅');
+            
+            // Update counting channel
+            await database.updateCountingChannel(message.guild.id, message.channel.id, {
+                current_number: number,
+                last_user_id: message.author.id,
+                highest_number: Math.max(countingChannel.highest_number, number),
+                total_correct: countingChannel.total_correct + 1
+            });
+            
+            // Update user stats
+            const userStats = await database.getCountingStats(message.author.id, message.guild.id) || {
+                correct_count: 0,
+                incorrect_count: 0,
+                highest_number: 0,
+                streak: 0,
+                best_streak: 0
+            };
+            
+            const newStreak = userStats.streak + 1;
+            await database.updateCountingStats(message.author.id, message.guild.id, {
+                correct_count: userStats.correct_count + 1,
+                highest_number: Math.max(userStats.highest_number, number),
+                last_number: number,
+                streak: newStreak,
+                best_streak: Math.max(userStats.best_streak, newStreak)
+            });
+            
+            // Special milestone reactions
+            if (number % 100 === 0) {
+                await message.react('🎉');
+                
+                const milestoneEmbed = new EmbedBuilder()
+                    .setTitle('🎉 Milestone Reached!')
+                    .setDescription(`Congratulations! The server reached **${number}**!`)
+                    .setColor(0xFFD700)
+                    .setFooter({ text: `Counted by ${message.author.username}`, iconURL: message.author.displayAvatarURL() });
+                
+                await message.reply({ embeds: [milestoneEmbed] });
+            } else if (number % 50 === 0) {
+                await message.react('🏆');
+            } else if (number % 25 === 0) {
+                await message.react('⭐');
+            }
+            
+        } else {
+            // Wrong number! Reset the count
+            await message.react('❌');
+            
+            const resetEmbed = new EmbedBuilder()
+                .setTitle('💥 Count Reset!')
+                .setDescription(`Wrong number! Expected **${expectedNumber}** but got **${number}**.\n\nThe count has been reset to **0**.`)
+                .addFields(
+                    { name: '📊 Previous High', value: `${countingChannel.current_number}`, inline: true },
+                    { name: '💔 Reset by', value: `${message.author}`, inline: true }
+                )
+                .setColor(0xE74C3C)
+                .setFooter({ text: 'Better luck next time!' });
+            
+            await message.reply({ embeds: [resetEmbed] });
+            
+            // Reset counting channel
+            await database.updateCountingChannel(message.guild.id, message.channel.id, {
+                current_number: 0,
+                last_user_id: null,
+                total_incorrect: countingChannel.total_incorrect + 1
+            });
+            
+            // Update user stats
+            const userStats = await database.getCountingStats(message.author.id, message.guild.id) || {
+                correct_count: 0,
+                incorrect_count: 0,
+                highest_number: 0,
+                streak: 0,
+                best_streak: 0
+            };
+            
+            await database.updateCountingStats(message.author.id, message.guild.id, {
+                incorrect_count: userStats.incorrect_count + 1,
+                streak: 0
+            });
+        }
+        
+        // Record in history
+        await database.addCountingHistory(
+            message.guild.id,
+            message.channel.id,
+            message.author.id,
+            message.author.username,
+            number,
+            expectedNumber,
+            isCorrect
+        );
+        
+    } catch (error) {
+        console.error('Error handling counting message:', error);
+    }
+}
+
+async function handleCountChannelCommand(interaction) {
+    const subcommand = interaction.options.getSubcommand();
+    
+    try {
+        switch (subcommand) {
+            case 'set':
+                await handleCountChannelSet(interaction);
+                break;
+            case 'remove':
+                await handleCountChannelRemove(interaction);
+                break;
+            case 'reset':
+                await handleCountChannelReset(interaction);
+                break;
+            case 'info':
+                await handleCountChannelInfo(interaction);
+                break;
+        }
+    } catch (error) {
+        console.error('Count channel command error:', error);
+        
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ Error')
+            .setDescription('There was an error processing your counting channel request.')
+            .setColor(0xE74C3C);
+        
+        if (interaction.replied || interaction.deferred) {
+            await interaction.followUp({ embeds: [errorEmbed], ephemeral: true });
+        } else {
+            await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+        }
+    }
+}
+
+async function handleCountChannelSet(interaction) {
+    const channel = interaction.channel;
+    
+    // Check if channel is already a counting channel
+    const existingChannel = await database.getCountingChannel(interaction.guild.id, channel.id);
+    if (existingChannel) {
+        const embed = new EmbedBuilder()
+            .setTitle('ℹ️ Already Set')
+            .setDescription(`${channel} is already set as a counting channel!`)
+            .setColor(0x3498DB);
+        
+        return await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+    
+    // Set the channel as counting channel
+    await database.setCountingChannel(interaction.guild.id, channel.id);
+    
+    const embed = new EmbedBuilder()
+        .setTitle('✅ Counting Channel Set')
+        .setDescription(`${channel} is now a counting channel!`)
+        .addFields(
+            { name: '📋 Rules', value: '• Count in order starting from 1\n• No two consecutive numbers by the same user\n• Only numbers are allowed\n• Wrong numbers reset the count', inline: false },
+            { name: '🎯 Goal', value: 'Count as high as possible as a team!', inline: false }
+        )
+        .setColor(0x2ECC71)
+        .setFooter({ text: 'Type "1" to start counting!' });
+    
+    await interaction.reply({ embeds: [embed] });
+    
+    // Send initial counting message
+    const startEmbed = new EmbedBuilder()
+        .setTitle('🔢 Counting Game Started!')
+        .setDescription('Let\'s start counting! Type **1** to begin.')
+        .setColor(0x3742FA);
+    
+    await channel.send({ embeds: [startEmbed] });
+}
+
+async function handleCountChannelRemove(interaction) {
+    const channel = interaction.channel;
+    
+    const existingChannel = await database.getCountingChannel(interaction.guild.id, channel.id);
+    if (!existingChannel) {
+        const embed = new EmbedBuilder()
+            .setTitle('❌ Not a Counting Channel')
+            .setDescription(`${channel} is not set as a counting channel.`)
+            .setColor(0xE74C3C);
+        
+        return await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+    
+    await database.removeCountingChannel(interaction.guild.id, channel.id);
+    
+    const embed = new EmbedBuilder()
+        .setTitle('✅ Counting Channel Removed')
+        .setDescription(`${channel} is no longer a counting channel.`)
+        .addFields(
+            { name: '📊 Final Stats', value: `Highest Number: **${existingChannel.highest_number}**\nCorrect Counts: **${existingChannel.total_correct}**\nIncorrect Counts: **${existingChannel.total_incorrect}**`, inline: false }
+        )
+        .setColor(0x95A5A6);
+    
+    await interaction.reply({ embeds: [embed] });
+}
+
+async function handleCountChannelReset(interaction) {
+    const channel = interaction.channel;
+    
+    const existingChannel = await database.getCountingChannel(interaction.guild.id, channel.id);
+    if (!existingChannel) {
+        const embed = new EmbedBuilder()
+            .setTitle('❌ Not a Counting Channel')
+            .setDescription(`${channel} is not set as a counting channel.`)
+            .setColor(0xE74C3C);
+        
+        return await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+    
+    await database.updateCountingChannel(interaction.guild.id, channel.id, {
+        current_number: 0,
+        last_user_id: null
+    });
+    
+    const embed = new EmbedBuilder()
+        .setTitle('🔄 Count Reset')
+        .setDescription('The count has been reset to **0**. Start counting from **1** again!')
+        .addFields(
+            { name: '📊 Previous High', value: `${existingChannel.current_number}`, inline: true },
+            { name: '🎯 New Goal', value: 'Beat the previous record!', inline: true }
+        )
+        .setColor(0xF39C12);
+    
+    await interaction.reply({ embeds: [embed] });
+}
+
+async function handleCountChannelInfo(interaction) {
+    const channel = interaction.channel;
+    
+    const countingChannel = await database.getCountingChannel(interaction.guild.id, channel.id);
+    if (!countingChannel) {
+        const embed = new EmbedBuilder()
+            .setTitle('❌ Not a Counting Channel')
+            .setDescription(`${channel} is not set as a counting channel.`)
+            .setColor(0xE74C3C);
+        
+        return await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+    
+    const accuracyRate = countingChannel.total_correct + countingChannel.total_incorrect > 0 
+        ? ((countingChannel.total_correct / (countingChannel.total_correct + countingChannel.total_incorrect)) * 100).toFixed(1)
+        : '0.0';
+    
+    const embed = new EmbedBuilder()
+        .setTitle('📊 Counting Channel Info')
+        .setDescription(`Information for ${channel}`)
+        .addFields(
+            { name: '🔢 Current Number', value: `${countingChannel.current_number}`, inline: true },
+            { name: '🏆 Highest Number', value: `${countingChannel.highest_number}`, inline: true },
+            { name: '👤 Last Counter', value: countingChannel.last_user_id ? `<@${countingChannel.last_user_id}>` : 'None', inline: true },
+            { name: '✅ Correct Counts', value: `${countingChannel.total_correct}`, inline: true },
+            { name: '❌ Incorrect Counts', value: `${countingChannel.total_incorrect}`, inline: true },
+            { name: '📈 Accuracy Rate', value: `${accuracyRate}%`, inline: true }
+        )
+        .setColor(0x3742FA)
+        .setTimestamp();
+    
+    await interaction.reply({ embeds: [embed] });
+}
+
+async function handleUserStatsCommand(interaction) {
+    const targetUser = interaction.options.getUser('user') || interaction.user;
+    
+    try {
+        const userStats = await database.getCountingStats(targetUser.id, interaction.guild.id);
+        
+        if (!userStats || (userStats.correct_count === 0 && userStats.incorrect_count === 0)) {
+            const embed = new EmbedBuilder()
+                .setTitle('📊 No Counting Stats')
+                .setDescription(`${targetUser.username} hasn't participated in counting yet.`)
+                .setColor(0x95A5A6);
+            
+            return await interaction.reply({ embeds: [embed] });
+        }
+        
+        const totalAttempts = userStats.correct_count + userStats.incorrect_count;
+        const accuracyRate = totalAttempts > 0 ? ((userStats.correct_count / totalAttempts) * 100).toFixed(1) : '0.0';
+        
+        const embed = new EmbedBuilder()
+            .setTitle('📊 Counting Statistics')
+            .setDescription(`Stats for **${targetUser.username}**`)
+            .addFields(
+                { name: '✅ Correct Numbers', value: `${userStats.correct_count}`, inline: true },
+                { name: '❌ Incorrect Numbers', value: `${userStats.incorrect_count}`, inline: true },
+                { name: '📈 Accuracy Rate', value: `${accuracyRate}%`, inline: true },
+                { name: '🏆 Highest Number', value: `${userStats.highest_number}`, inline: true },
+                { name: '🔥 Current Streak', value: `${userStats.streak}`, inline: true },
+                { name: '🏅 Best Streak', value: `${userStats.best_streak}`, inline: true }
+            )
+            .setColor(0x3742FA)
+            .setThumbnail(targetUser.displayAvatarURL())
+            .setTimestamp();
+        
+        if (userStats.last_number > 0) {
+            embed.addFields({ name: '🔢 Last Number', value: `${userStats.last_number}`, inline: true });
+        }
+        
+        await interaction.reply({ embeds: [embed] });
+        
+    } catch (error) {
+        console.error('User stats command error:', error);
+        
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ Error')
+            .setDescription('There was an error retrieving user statistics.')
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+}
+
+async function handleCountLeaderboardCommand(interaction) {
+    const leaderboardType = interaction.options.getString('type') || 'correct';
+    
+    try {
+        let sortBy;
+        let title;
+        let description;
+        
+        switch (leaderboardType) {
+            case 'correct':
+                sortBy = 'correct_count';
+                title = '🏆 Most Correct Numbers';
+                description = 'Users with the most correct counts';
+                break;
+            case 'highest':
+                sortBy = 'highest_number';
+                title = '🎯 Highest Numbers Reached';
+                description = 'Users who reached the highest numbers';
+                break;
+            case 'streak':
+                sortBy = 'best_streak';
+                title = '🔥 Best Streaks';
+                description = 'Users with the longest counting streaks';
+                break;
+            case 'accuracy':
+                title = '📈 Best Accuracy';
+                description = 'Users with the highest accuracy rates';
+                break;
+        }
+        
+        let topUsers;
+        if (leaderboardType === 'accuracy') {
+            topUsers = await database.getCountingLeaderboard(interaction.guild.id);
+        } else {
+            topUsers = await database.getTopCountingUsers(interaction.guild.id, 10, sortBy);
+        }
+        
+        if (topUsers.length === 0) {
+            const embed = new EmbedBuilder()
+                .setTitle('📊 No Counting Data')
+                .setDescription('No counting statistics available yet. Start counting to see the leaderboard!')
+                .setColor(0x95A5A6);
+            
+            return await interaction.reply({ embeds: [embed] });
+        }
+        
+        const embed = new EmbedBuilder()
+            .setTitle(title)
+            .setDescription(description)
+            .setColor(0xFFD700);
+        
+        let leaderboardText = '';
+        for (let i = 0; i < Math.min(topUsers.length, 10); i++) {
+            const user = topUsers[i];
+            const position = i + 1;
+            const emoji = position === 1 ? '🥇' : position === 2 ? '🥈' : position === 3 ? '🥉' : `**${position}.**`;
+            
+            let value;
+            switch (leaderboardType) {
+                case 'correct':
+                    value = `${user.correct_count} correct`;
+                    break;
+                case 'highest':
+                    value = `reached ${user.highest_number}`;
+                    break;
+                case 'streak':
+                    value = `${user.best_streak} streak`;
+                    break;
+                case 'accuracy':
+                    value = `${user.accuracy_rate || '0.0'}% accuracy`;
+                    break;
+            }
+            
+            leaderboardText += `${emoji} <@${user.user_id}> - ${value}\n`;
+        }
+        
+        embed.setDescription(leaderboardText);
+        embed.setFooter({ text: `${topUsers.length} total participants` });
+        
+        await interaction.reply({ embeds: [embed] });
+        
+    } catch (error) {
+        console.error('Count leaderboard command error:', error);
+        
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ Error')
+            .setDescription('There was an error retrieving the leaderboard.')
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+}
+
+async function handleCountHistoryCommand(interaction) {
+    const limit = interaction.options.getInteger('limit') || 10;
+    
+    try {
+        const countingChannel = await database.getCountingChannel(interaction.guild.id, interaction.channel.id);
+        if (!countingChannel) {
+            const embed = new EmbedBuilder()
+                .setTitle('❌ Not a Counting Channel')
+                .setDescription('This command can only be used in a counting channel.')
+                .setColor(0xE74C3C);
+            
+            return await interaction.reply({ embeds: [embed], ephemeral: true });
+        }
+        
+        const history = await database.getCountingHistory(interaction.guild.id, interaction.channel.id, limit);
+        
+        if (history.length === 0) {
+            const embed = new EmbedBuilder()
+                .setTitle('📊 No History')
+                .setDescription('No counting history available for this channel yet.')
+                .setColor(0x95A5A6);
+            
+            return await interaction.reply({ embeds: [embed] });
+        }
+        
+        const embed = new EmbedBuilder()
+            .setTitle('📊 Recent Counting History')
+            .setDescription(`Last ${Math.min(limit, history.length)} counting attempts`)
+            .setColor(0x3742FA);
+        
+        let historyText = '';
+        for (const entry of history.slice(0, 10)) {
+            const status = entry.was_correct ? '✅' : '❌';
+            const timestamp = new Date(entry.timestamp).toLocaleString();
+            historyText += `${status} **${entry.number_attempted}** by <@${entry.user_id}> (expected ${entry.expected_number})\n`;
+        }
+        
+        embed.setDescription(historyText);
+        embed.setFooter({ text: `Current count: ${countingChannel.current_number}` });
+        
+        await interaction.reply({ embeds: [embed] });
+        
+    } catch (error) {
+        console.error('Count history command error:', error);
+        
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ Error')
+            .setDescription('There was an error retrieving counting history.')
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+}
 
 // Create a simple health check server for hosting platforms
 const server = http.createServer((req, res) => {

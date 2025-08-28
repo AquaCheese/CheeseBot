@@ -210,6 +210,52 @@ class Database {
             )
         `);
 
+        // Counting system tables
+        this.db.run(`
+            CREATE TABLE IF NOT EXISTS counting_channels (
+                guild_id TEXT,
+                channel_id TEXT,
+                current_number INTEGER DEFAULT 0,
+                last_user_id TEXT,
+                highest_number INTEGER DEFAULT 0,
+                total_correct INTEGER DEFAULT 0,
+                total_incorrect INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (guild_id, channel_id)
+            )
+        `);
+
+        this.db.run(`
+            CREATE TABLE IF NOT EXISTS counting_stats (
+                user_id TEXT,
+                guild_id TEXT,
+                correct_count INTEGER DEFAULT 0,
+                incorrect_count INTEGER DEFAULT 0,
+                highest_number INTEGER DEFAULT 0,
+                last_number INTEGER DEFAULT 0,
+                streak INTEGER DEFAULT 0,
+                best_streak INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, guild_id)
+            )
+        `);
+
+        this.db.run(`
+            CREATE TABLE IF NOT EXISTS counting_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT,
+                channel_id TEXT,
+                user_id TEXT,
+                username TEXT,
+                number_attempted INTEGER,
+                expected_number INTEGER,
+                was_correct BOOLEAN,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
         // Run migrations
         this.runMigrations();
     }
@@ -720,6 +766,195 @@ class Database {
             this.db.all(
                 'SELECT * FROM tickets WHERE guild_id = ? AND status = ? ORDER BY created_at DESC',
                 [guildId, status],
+                (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows || []);
+                }
+            );
+        });
+    }
+
+    // ===== COUNTING SYSTEM METHODS =====
+    
+    async setCountingChannel(guildId, channelId) {
+        return new Promise((resolve, reject) => {
+            this.db.run(
+                'INSERT OR REPLACE INTO counting_channels (guild_id, channel_id, current_number, last_user_id, highest_number, total_correct, total_incorrect, updated_at) VALUES (?, ?, 0, NULL, 0, 0, 0, CURRENT_TIMESTAMP)',
+                [guildId, channelId],
+                function(err) {
+                    if (err) reject(err);
+                    else resolve(this.lastID);
+                }
+            );
+        });
+    }
+
+    async getCountingChannel(guildId, channelId) {
+        return new Promise((resolve, reject) => {
+            this.db.get(
+                'SELECT * FROM counting_channels WHERE guild_id = ? AND channel_id = ?',
+                [guildId, channelId],
+                (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                }
+            );
+        });
+    }
+
+    async getAllCountingChannels(guildId) {
+        return new Promise((resolve, reject) => {
+            this.db.all(
+                'SELECT * FROM counting_channels WHERE guild_id = ?',
+                [guildId],
+                (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows || []);
+                }
+            );
+        });
+    }
+
+    async updateCountingChannel(guildId, channelId, updates) {
+        return new Promise((resolve, reject) => {
+            const fields = Object.keys(updates).map(key => `${key} = ?`).join(', ');
+            const values = [...Object.values(updates), guildId, channelId];
+            
+            this.db.run(
+                `UPDATE counting_channels SET ${fields}, updated_at = CURRENT_TIMESTAMP WHERE guild_id = ? AND channel_id = ?`,
+                values,
+                function(err) {
+                    if (err) reject(err);
+                    else resolve(this.changes);
+                }
+            );
+        });
+    }
+
+    async removeCountingChannel(guildId, channelId) {
+        return new Promise((resolve, reject) => {
+            this.db.run(
+                'DELETE FROM counting_channels WHERE guild_id = ? AND channel_id = ?',
+                [guildId, channelId],
+                function(err) {
+                    if (err) reject(err);
+                    else resolve(this.changes);
+                }
+            );
+        });
+    }
+
+    async getCountingStats(userId, guildId) {
+        return new Promise((resolve, reject) => {
+            this.db.get(
+                'SELECT * FROM counting_stats WHERE user_id = ? AND guild_id = ?',
+                [userId, guildId],
+                (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                }
+            );
+        });
+    }
+
+    async updateCountingStats(userId, guildId, updates) {
+        return new Promise((resolve, reject) => {
+            // First check if user stats exist
+            this.db.get(
+                'SELECT * FROM counting_stats WHERE user_id = ? AND guild_id = ?',
+                [userId, guildId],
+                (err, row) => {
+                    if (err) {
+                        reject(err);
+                        return;
+                    }
+
+                    if (!row) {
+                        // Create new stats entry
+                        this.db.run(
+                            'INSERT INTO counting_stats (user_id, guild_id, correct_count, incorrect_count, highest_number, last_number, streak, best_streak) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                            [userId, guildId, updates.correct_count || 0, updates.incorrect_count || 0, updates.highest_number || 0, updates.last_number || 0, updates.streak || 0, updates.best_streak || 0],
+                            function(err) {
+                                if (err) reject(err);
+                                else resolve(this.lastID);
+                            }
+                        );
+                    } else {
+                        // Update existing stats
+                        const fields = Object.keys(updates).map(key => `${key} = ?`).join(', ');
+                        const values = [...Object.values(updates), userId, guildId];
+                        
+                        this.db.run(
+                            `UPDATE counting_stats SET ${fields}, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND guild_id = ?`,
+                            values,
+                            function(err) {
+                                if (err) reject(err);
+                                else resolve(this.changes);
+                            }
+                        );
+                    }
+                }
+            );
+        });
+    }
+
+    async getTopCountingUsers(guildId, limit = 10, sortBy = 'correct_count') {
+        return new Promise((resolve, reject) => {
+            const validSortFields = ['correct_count', 'highest_number', 'best_streak'];
+            const sortField = validSortFields.includes(sortBy) ? sortBy : 'correct_count';
+            
+            this.db.all(
+                `SELECT * FROM counting_stats WHERE guild_id = ? ORDER BY ${sortField} DESC LIMIT ?`,
+                [guildId, limit],
+                (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows || []);
+                }
+            );
+        });
+    }
+
+    async addCountingHistory(guildId, channelId, userId, username, numberAttempted, expectedNumber, wasCorrect) {
+        return new Promise((resolve, reject) => {
+            this.db.run(
+                'INSERT INTO counting_history (guild_id, channel_id, user_id, username, number_attempted, expected_number, was_correct) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [guildId, channelId, userId, username, numberAttempted, expectedNumber, wasCorrect],
+                function(err) {
+                    if (err) reject(err);
+                    else resolve(this.lastID);
+                }
+            );
+        });
+    }
+
+    async getCountingHistory(guildId, channelId, limit = 50) {
+        return new Promise((resolve, reject) => {
+            this.db.all(
+                'SELECT * FROM counting_history WHERE guild_id = ? AND channel_id = ? ORDER BY timestamp DESC LIMIT ?',
+                [guildId, channelId, limit],
+                (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows || []);
+                }
+            );
+        });
+    }
+
+    async getCountingLeaderboard(guildId) {
+        return new Promise((resolve, reject) => {
+            this.db.all(
+                `SELECT 
+                    user_id,
+                    correct_count,
+                    incorrect_count,
+                    highest_number,
+                    best_streak,
+                    ROUND((CAST(correct_count AS FLOAT) / NULLIF(correct_count + incorrect_count, 0)) * 100, 2) as accuracy_rate
+                FROM counting_stats 
+                WHERE guild_id = ? AND (correct_count > 0 OR incorrect_count > 0)
+                ORDER BY correct_count DESC, accuracy_rate DESC 
+                LIMIT 20`,
+                [guildId],
                 (err, rows) => {
                     if (err) reject(err);
                     else resolve(rows || []);
