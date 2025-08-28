@@ -1748,6 +1748,30 @@ async function handleButton(interaction) {
                 await showWarningConfigModal(interaction);
                 break;
             
+            case 'raid_configure':
+                await showRaidConfigModal(interaction);
+                break;
+            
+            case 'automod_configure':
+                await showAutoModConfigModal(interaction);
+                break;
+            
+            case 'panic_configure_roles':
+                await showPanicRolesConfigModal(interaction);
+                break;
+            
+            case 'config_export':
+                await handleConfigExport(interaction);
+                break;
+            
+            case 'advanced_reset_confirm':
+                await handleAdvancedResetConfirm(interaction);
+                break;
+            
+            case 'advanced_reset_cancel':
+                await handleAdvancedResetCancel(interaction);
+                break;
+            
             case 'advanced_reset':
                 await handleAdvancedReset(interaction);
                 break;
@@ -2022,6 +2046,18 @@ async function handleModal(interaction) {
             case 'warning_config_modal':
                 await handleWarningConfigModal(interaction);
                 break;
+            
+            case 'raid_config_modal':
+                await handleRaidConfigModal(interaction);
+                break;
+            
+            case 'automod_config_modal':
+                await handleAutoModConfigModal(interaction);
+                break;
+            
+            case 'panic_roles_config_modal':
+                await handlePanicRolesConfigModal(interaction);
+                break;
         }
     } catch (error) {
         console.error('Modal error:', error);
@@ -2187,6 +2223,321 @@ async function handleWarningConfigModal(interaction) {
         
         await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
     }
+}
+
+// Missing modal handlers - CRITICAL SECURITY FIXES
+async function handleRaidConfigModal(interaction) {
+    try {
+        const userThreshold = parseInt(interaction.fields.getTextInputValue('raid_user_threshold'));
+        const timeWindow = parseInt(interaction.fields.getTextInputValue('raid_time_window'));
+        const punishment = interaction.fields.getTextInputValue('raid_punishment').toLowerCase().trim();
+        
+        // Validate inputs
+        if (isNaN(userThreshold) || userThreshold < 1 || userThreshold > 100) {
+            throw new Error('User threshold must be between 1 and 100');
+        }
+        
+        if (isNaN(timeWindow) || timeWindow < 10 || timeWindow > 600) {
+            throw new Error('Time window must be between 10 and 600 seconds');
+        }
+        
+        const validPunishments = ['ban', 'kick'];
+        if (!validPunishments.includes(punishment)) {
+            throw new Error('Invalid punishment type. Use: ban or kick');
+        }
+        
+        console.log(`🛡️ Updating raid protection settings:`, {
+            userThreshold,
+            timeWindow,
+            punishment
+        });
+        
+        // Update settings in database
+        await database.updateModerationSettings(interaction.guild.id, {
+            raid_user_threshold: userThreshold,
+            raid_time_window: timeWindow,
+            raid_punishment: punishment
+        });
+        
+        // Return to the raid protection menu to show updated settings
+        const raidMenu = await setupSystem.createRaidProtectionMenu(interaction.guild.id);
+        await interaction.update(raidMenu);
+        
+        console.log(`✅ Raid protection settings updated successfully for guild ${interaction.guild.id}`);
+        
+    } catch (error) {
+        console.error('Error updating raid config:', error);
+        
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ Configuration Error')
+            .setDescription(`Failed to update raid protection settings: ${error.message}`)
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+}
+
+async function handleAutoModConfigModal(interaction) {
+    try {
+        const capsThreshold = parseInt(interaction.fields.getTextInputValue('caps_threshold'));
+        
+        // Validate inputs
+        if (isNaN(capsThreshold) || capsThreshold < 10 || capsThreshold > 100) {
+            throw new Error('Caps threshold must be between 10 and 100 percent');
+        }
+        
+        console.log(`🛡️ Updating auto-moderation settings:`, {
+            capsThreshold
+        });
+        
+        // Update settings in database
+        await database.updateModerationSettings(interaction.guild.id, {
+            caps_threshold: capsThreshold
+        });
+        
+        // Return to the auto-moderation menu to show updated settings
+        const autoModMenu = await setupSystem.createAutoModerationMenu(interaction.guild.id);
+        await interaction.update(autoModMenu);
+        
+        console.log(`✅ Auto-moderation settings updated successfully for guild ${interaction.guild.id}`);
+        
+    } catch (error) {
+        console.error('Error updating automod config:', error);
+        
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ Configuration Error')
+            .setDescription(`Failed to update auto-moderation settings: ${error.message}`)
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+}
+
+async function handlePanicRolesConfigModal(interaction) {
+    try {
+        const rolesInput = interaction.fields.getTextInputValue('safe_roles');
+        const roleIds = rolesInput ? rolesInput.split(',').map(id => id.trim()).filter(id => id) : [];
+        
+        // Validate role IDs
+        for (const roleId of roleIds) {
+            if (!/^\d+$/.test(roleId)) {
+                throw new Error(`Invalid role ID: ${roleId}. Must be numeric.`);
+            }
+        }
+        
+        console.log(`🛡️ Updating panic mode safe roles:`, {
+            roleIds
+        });
+        
+        // Update server config with safe roles
+        const currentConfig = await database.getServerConfig(interaction.guild.id) || {};
+        await database.setServerConfig(interaction.guild.id, {
+            ...currentConfig,
+            safeRoles: roleIds
+        });
+        
+        // Return to the panic button menu
+        const panicMenu = await setupSystem.createPanicButtonMenu(interaction.guild.id);
+        await interaction.update(panicMenu);
+        
+        console.log(`✅ Panic mode safe roles updated successfully for guild ${interaction.guild.id}`);
+        
+    } catch (error) {
+        console.error('Error updating panic roles config:', error);
+        
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ Configuration Error')
+            .setDescription(`Failed to update safe roles: ${error.message}`)
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+}
+
+// Missing button handlers - CRITICAL SECURITY FIXES
+async function showRaidConfigModal(interaction) {
+    const settings = await database.getModerationSettings(interaction.guild.id);
+    
+    const modal = new ModalBuilder()
+        .setCustomId('raid_config_modal')
+        .setTitle('Raid Protection Configuration');
+
+    const userThresholdInput = new TextInputBuilder()
+        .setCustomId('raid_user_threshold')
+        .setLabel('User threshold (users joining)')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('10')
+        .setValue((settings.raid_user_threshold || 10).toString())
+        .setRequired(true);
+
+    const timeWindowInput = new TextInputBuilder()
+        .setCustomId('raid_time_window')
+        .setLabel('Time window (seconds)')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('60')
+        .setValue((settings.raid_time_window || 60).toString())
+        .setRequired(true);
+
+    const punishmentInput = new TextInputBuilder()
+        .setCustomId('raid_punishment')
+        .setLabel('Punishment type')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('ban, kick')
+        .setValue(settings.raid_punishment || 'ban')
+        .setRequired(true);
+
+    modal.addComponents(
+        new ActionRowBuilder().addComponents(userThresholdInput),
+        new ActionRowBuilder().addComponents(timeWindowInput),
+        new ActionRowBuilder().addComponents(punishmentInput)
+    );
+
+    await interaction.showModal(modal);
+}
+
+async function showAutoModConfigModal(interaction) {
+    const settings = await database.getModerationSettings(interaction.guild.id);
+    
+    const modal = new ModalBuilder()
+        .setCustomId('automod_config_modal')
+        .setTitle('Auto-Moderation Configuration');
+
+    const capsThresholdInput = new TextInputBuilder()
+        .setCustomId('caps_threshold')
+        .setLabel('Caps threshold (percentage)')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('70')
+        .setValue((settings.caps_threshold || 70).toString())
+        .setRequired(true);
+
+    modal.addComponents(
+        new ActionRowBuilder().addComponents(capsThresholdInput)
+    );
+
+    await interaction.showModal(modal);
+}
+
+async function showPanicRolesConfigModal(interaction) {
+    const config = await database.getServerConfig(interaction.guild.id);
+    const safeRoles = config?.safe_roles ? JSON.parse(config.safe_roles) : [];
+    
+    const modal = new ModalBuilder()
+        .setCustomId('panic_roles_config_modal')
+        .setTitle('Panic Mode Safe Roles');
+
+    const rolesInput = new TextInputBuilder()
+        .setCustomId('safe_roles')
+        .setLabel('Safe role IDs (comma separated)')
+        .setStyle(TextInputStyle.Paragraph)
+        .setPlaceholder('123456789,987654321')
+        .setValue(safeRoles.join(','))
+        .setRequired(false);
+
+    modal.addComponents(
+        new ActionRowBuilder().addComponents(rolesInput)
+    );
+
+    await interaction.showModal(modal);
+}
+
+async function handleConfigExport(interaction) {
+    try {
+        const settings = await database.getModerationSettings(interaction.guild.id);
+        const config = await database.getServerConfig(interaction.guild.id);
+        
+        const exportData = {
+            timestamp: new Date().toISOString(),
+            guild_id: interaction.guild.id,
+            guild_name: interaction.guild.name,
+            settings: settings,
+            config: config
+        };
+        
+        const configText = JSON.stringify(exportData, null, 2);
+        
+        const embed = new EmbedBuilder()
+            .setTitle('📊 Configuration Export')
+            .setDescription('Your server configuration has been exported below:')
+            .setColor(0x3742FA)
+            .setTimestamp();
+        
+        await interaction.reply({ 
+            embeds: [embed], 
+            files: [{
+                attachment: Buffer.from(configText),
+                name: `${interaction.guild.name}-config-${Date.now()}.json`
+            }],
+            ephemeral: true 
+        });
+        
+    } catch (error) {
+        console.error('Config export error:', error);
+        await interaction.reply({ 
+            content: 'Failed to export configuration!', 
+            ephemeral: true 
+        });
+    }
+}
+
+async function handleAdvancedResetConfirm(interaction) {
+    try {
+        // Reset all settings to defaults
+        const defaultSettings = {
+            spam_protection: 0,
+            spam_message_count: 5,
+            spam_time_window: 5000,
+            spam_punishment: 'timeout',
+            spam_punishment_duration: 300,
+            spam_punishment_unit: 'seconds',
+            raid_protection: 0,
+            raid_user_threshold: 10,
+            raid_time_window: 60,
+            raid_punishment: 'ban',
+            auto_mod: 0,
+            profanity_filter: 0,
+            link_filter: 0,
+            invite_filter: 0,
+            caps_filter: 0,
+            caps_threshold: 70,
+            anti_nuke: 0,
+            channel_create_limit: 3,
+            channel_delete_limit: 3,
+            role_create_limit: 5,
+            role_delete_limit: 5,
+            member_kick_limit: 3,
+            member_ban_limit: 3,
+            mass_ban_limit: 5,
+            warning_system: 0,
+            warning_threshold: 3,
+            warning_auto_punishment: 'timeout',
+            auto_actions: 1,
+            detailed_logging: 1,
+            whitelist_mode: 0,
+            auto_backup: 0,
+            analytics_enabled: 1
+        };
+        
+        await database.updateModerationSettings(interaction.guild.id, defaultSettings);
+        
+        const embed = new EmbedBuilder()
+            .setTitle('✅ Settings Reset')
+            .setDescription('All settings have been reset to default values.')
+            .setColor(0x2ECC71);
+        
+        await interaction.update({ embeds: [embed], components: [] });
+        
+    } catch (error) {
+        console.error('Reset error:', error);
+        await interaction.reply({ 
+            content: 'Failed to reset settings!', 
+            ephemeral: true 
+        });
+    }
+}
+
+async function handleAdvancedResetCancel(interaction) {
+    const advancedMenu = await setupSystem.createAdvancedSettingsMenu(interaction.guild.id);
+    await interaction.update(advancedMenu);
 }
 
 // Authentication button handlers
