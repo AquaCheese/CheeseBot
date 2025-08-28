@@ -4350,6 +4350,16 @@ async function handleUnclaimCommand(interaction) {
 async function handleAuthStartSetup(interaction) {
     const hasRegistered = await authSystem.hasAnyRegisteredUser();
     if (hasRegistered) {
+        // Check if the user trying to setup is the same user who already started setup
+        const existingUser = await authSystem.getUser(interaction.user.id);
+        
+        if (existingUser && !existingUser.is_setup_complete) {
+            // Allow the same user to continue/restart their setup with correct QR code
+            const modal = await authSystem.createPasswordSetupModal();
+            await interaction.showModal(modal);
+            return;
+        }
+        
         const embed = new EmbedBuilder()
             .setTitle('❌ Setup Already Complete')
             .setDescription('Authentication has already been set up by another user. Only one person can control this bot.')

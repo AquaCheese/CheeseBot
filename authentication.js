@@ -68,6 +68,19 @@ class AuthenticationSystem {
         });
     }
 
+    async getUser(userId) {
+        return new Promise((resolve, reject) => {
+            this.db.db.get(
+                'SELECT * FROM auth_users WHERE user_id = ?',
+                [userId],
+                (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                }
+            );
+        });
+    }
+
     async isUserAuthenticated(userId) {
         const session = this.authenticatedUsers.get(userId);
         if (!session) return false;
@@ -238,15 +251,42 @@ class AuthenticationSystem {
 
         const hashedPassword = await bcrypt.hash(password, 12);
 
-        // Generate TOTP secret
-        const secret = speakeasy.generateSecret({
-            name: `Guardian Bot (${username})`,
-            issuer: 'Guardian Security Bot',
-            length: 32
-        });
+        // Check if user already exists (incomplete setup)
+        const existingUser = await this.getUser(userId);
+        let secret, backupCodes;
 
-        // Generate backup codes
-        const backupCodes = this.generateBackupCodes();
+        if (existingUser && existingUser.totp_secret) {
+            // User exists, use existing secret
+            console.log(`[AUTH] Using existing TOTP secret for user ${userId}`);
+            secret = {
+                base32: existingUser.totp_secret,
+                otpauth_url: `otpauth://totp/Guardian%20Security%20Bot:${username}?secret=${existingUser.totp_secret}&issuer=Guardian%20Security%20Bot`
+            };
+            
+            // Decode existing backup codes or generate new ones
+            if (existingUser.backup_codes) {
+                try {
+                    const hashedCodes = JSON.parse(existingUser.backup_codes);
+                    // For security, we'll generate new backup codes during password reset
+                    backupCodes = this.generateBackupCodes();
+                } catch (e) {
+                    backupCodes = this.generateBackupCodes();
+                }
+            } else {
+                backupCodes = this.generateBackupCodes();
+            }
+        } else {
+            // New user, generate new secret
+            console.log(`[AUTH] Generating new TOTP secret for user ${userId}`);
+            secret = speakeasy.generateSecret({
+                name: `Guardian Bot (${username})`,
+                issuer: 'Guardian Security Bot',
+                length: 32
+            });
+            backupCodes = this.generateBackupCodes();
+        }
+
+        // Hash the backup codes
         const hashedBackupCodes = await Promise.all(
             backupCodes.map(code => bcrypt.hash(code, 12))
         );
