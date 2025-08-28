@@ -1,6 +1,6 @@
 # Guardian Security Bot
 
-A comprehensive all-in-one Discord security and moderation- `/ascii <text>` - Generate classic ASCII art from text using traditional characters like slashes, underscores, and pipesbot with advanced protection features, similar to GoodKnight and Verifier.
+A comprehensive all-in-one Discord security and moderation- `/ascii <text>` - Generate classic ASCII art from text using traditional characters like `#` symbolsbot with advanced protection features, similar to GoodKnight and Verifier.
 
 ## 🛡️ Features
 
