@@ -277,7 +277,7 @@ class AuthenticationSystem {
             throw new Error('Password is too weak. Please include uppercase, lowercase, numbers, and special characters.');
         }
 
-        const hashedPassword = await bcrypt.hash(password, 12);
+        const hashedPassword = await bcrypt.hash(password, 10);
 
         // Check if user already exists (incomplete setup)
         console.log(`[AUTH DEBUG] About to call getUser for ${userId}`);
@@ -322,7 +322,7 @@ class AuthenticationSystem {
 
         // Hash the backup codes
         const hashedBackupCodes = await Promise.all(
-            backupCodes.map(code => bcrypt.hash(code, 12))
+            backupCodes.map(code => bcrypt.hash(code, 10))
         );
 
         return new Promise((resolve, reject) => {

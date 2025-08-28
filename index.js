@@ -2518,6 +2518,22 @@ function generateAsciiArt(text) {
             '    #   ',
             '     #  '
         ],
+        '[': [
+            '  ######  ',
+            '  ##      ',
+            '  ##      ',
+            '  ##      ',
+            '  ##      ',
+            '  ######  ',
+        ],
+        ']': [
+            '  ######  ',
+            '      ##  ',
+            '      ##  ',
+            '      ##  ',
+            '      ##  ',
+            '  ######  ',
+        ],
         '0': [
             '  ####  ',
             ' #    # ',
@@ -4361,6 +4377,9 @@ async function handleAuthVerifySetup(interaction) {
 // Authentication modal handlers
 async function handleAuthPasswordSetup(interaction) {
     try {
+        // Acknowledge the interaction immediately to prevent timeout
+        await interaction.deferReply({ flags: [4096] });
+        
         const password = interaction.fields.getTextInputValue('password');
         const confirmPassword = interaction.fields.getTextInputValue('confirm_password');
         const username = interaction.user.username;
@@ -4374,7 +4393,7 @@ async function handleAuthPasswordSetup(interaction) {
         // Create setup embed with QR code
         const setupEmbed = await authSystem.createQRSetupEmbed(result.secret, qrBuffer, result.backupCodes);
         
-        await interaction.reply({ ...setupEmbed, flags: [4096] });
+        await interaction.editReply({ ...setupEmbed });
         
     } catch (error) {
         const embed = new EmbedBuilder()
@@ -4382,12 +4401,19 @@ async function handleAuthPasswordSetup(interaction) {
             .setDescription(`Error: ${error.message}`)
             .setColor(0xE74C3C);
         
-        await interaction.reply({ embeds: [embed], flags: [4096] });
+        if (interaction.deferred) {
+            await interaction.editReply({ embeds: [embed] });
+        } else {
+            await interaction.reply({ embeds: [embed], flags: [4096] });
+        }
     }
 }
 
 async function handleAuthLoginSubmit(interaction) {
     try {
+        // Acknowledge the interaction immediately to prevent timeout
+        await interaction.deferReply({ flags: [4096] });
+        
         const password = interaction.fields.getTextInputValue('password');
         const totpCode = interaction.fields.getTextInputValue('totp_code');
         const userId = interaction.user.id;
@@ -4403,7 +4429,7 @@ async function handleAuthLoginSubmit(interaction) {
             )
             .setColor(0x2ECC71);
         
-        await interaction.reply({ embeds: [embed], flags: [4096] });
+        await interaction.editReply({ embeds: [embed] });
         
     } catch (error) {
         const embed = new EmbedBuilder()
@@ -4411,12 +4437,19 @@ async function handleAuthLoginSubmit(interaction) {
             .setDescription(`Error: ${error.message}`)
             .setColor(0xE74C3C);
         
-        await interaction.reply({ embeds: [embed], flags: [4096] });
+        if (interaction.deferred) {
+            await interaction.editReply({ embeds: [embed] });
+        } else {
+            await interaction.reply({ embeds: [embed], flags: [4096] });
+        }
     }
 }
 
 async function handleAuthVerifySetupSubmit(interaction) {
     try {
+        // Acknowledge the interaction immediately to prevent timeout
+        await interaction.deferReply({ flags: [4096] });
+        
         const totpCode = interaction.fields.getTextInputValue('totp_code');
         const userId = interaction.user.id;
         
@@ -4426,7 +4459,7 @@ async function handleAuthVerifySetupSubmit(interaction) {
         await authSystem.createSession(userId);
         
         const successEmbed = await authSystem.createSuccessEmbed(interaction.user.username);
-        await interaction.reply({ ...successEmbed, flags: [4096] });
+        await interaction.editReply({ ...successEmbed });
         
     } catch (error) {
         const embed = new EmbedBuilder()
@@ -4434,7 +4467,11 @@ async function handleAuthVerifySetupSubmit(interaction) {
             .setDescription(`Error: ${error.message}`)
             .setColor(0xE74C3C);
         
-        await interaction.reply({ embeds: [embed], flags: [4096] });
+        if (interaction.deferred) {
+            await interaction.editReply({ embeds: [embed] });
+        } else {
+            await interaction.reply({ embeds: [embed], flags: [4096] });
+        }
     }
 }
 
