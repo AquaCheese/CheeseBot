@@ -416,11 +416,11 @@ async function handleButton(interaction) {
         
         // Authentication buttons
         if (customId === 'auth_start_setup') {
-            await authenticationSystem.handleStartSetup(interaction);
+            await authSystem.handleStartSetup(interaction);
         } else if (customId === 'auth_login') {
-            await authenticationSystem.handleLogin(interaction);
+            await authSystem.handleLogin(interaction);
         } else if (customId === 'auth_verify_setup') {
-            await authenticationSystem.handleVerifySetup(interaction);
+            await authSystem.handleVerifySetup(interaction);
         }
         
         // Ticket buttons
@@ -3320,7 +3320,7 @@ async function handlePanicRolesConfigModal(interaction) {
             safeRoles: roleIds
         });
         
-        // Return to the panic button menu
+        // Return to the panic button menu to show updated settings
         const panicMenu = await setupSystem.createPanicButtonMenu(interaction.guild.id);
         await interaction.update(panicMenu);
         
@@ -3331,7 +3331,7 @@ async function handlePanicRolesConfigModal(interaction) {
         
         const errorEmbed = new EmbedBuilder()
             .setTitle('❌ Configuration Error')
-            .setDescription(`Failed to update safe roles: ${error.message}`)
+            .setDescription(`Failed to update panic roles settings: ${error.message}`)
             .setColor(0xE74C3C);
         
         await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
