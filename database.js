@@ -163,6 +163,51 @@ class Database {
                 PRIMARY KEY (user_id, guild_id)
             )
         `);
+
+        // Ticketing system tables
+        this.db.run(`
+            CREATE TABLE IF NOT EXISTS tickets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT,
+                channel_id TEXT UNIQUE,
+                user_id TEXT,
+                username TEXT,
+                subject TEXT,
+                status TEXT DEFAULT 'open',
+                priority TEXT DEFAULT 'normal',
+                claimed_by TEXT,
+                claimed_by_username TEXT,
+                thread_id TEXT,
+                ticket_number INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                closed_at DATETIME,
+                close_reason TEXT
+            )
+        `);
+
+        this.db.run(`
+            CREATE TABLE IF NOT EXISTS ticket_config (
+                guild_id TEXT PRIMARY KEY,
+                ticket_category_id TEXT,
+                transcript_channel_id TEXT,
+                staff_role_id TEXT,
+                ticket_counter INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        this.db.run(`
+            CREATE TABLE IF NOT EXISTS ticket_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticket_id INTEGER,
+                user_id TEXT,
+                username TEXT,
+                message_content TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (ticket_id) REFERENCES tickets (id)
+            )
+        `);
     }
 
     // Server configuration methods
@@ -490,6 +535,175 @@ class Database {
             this.db.all(
                 'SELECT * FROM authorized_users WHERE is_active = 1 ORDER BY granted_at ASC',
                 [],
+                (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows || []);
+                }
+            );
+        });
+    }
+
+    // Ticketing system methods
+    async createTicket(guildId, channelId, userId, username, subject, priority = 'normal') {
+        return new Promise((resolve, reject) => {
+            // First get and increment ticket counter
+            this.db.get(
+                'SELECT ticket_counter FROM ticket_config WHERE guild_id = ?',
+                [guildId],
+                (err, row) => {
+                    if (err) {
+                        reject(err);
+                        return;
+                    }
+                    
+                    const ticketNumber = (row?.ticket_counter || 0) + 1;
+                    
+                    // Update counter
+                    this.db.run(
+                        `INSERT OR REPLACE INTO ticket_config 
+                         (guild_id, ticket_counter, updated_at) 
+                         VALUES (?, ?, CURRENT_TIMESTAMP)`,
+                        [guildId, ticketNumber],
+                        (updateErr) => {
+                            if (updateErr) {
+                                reject(updateErr);
+                                return;
+                            }
+                            
+                            // Create ticket
+                            this.db.run(
+                                `INSERT INTO tickets 
+                                 (guild_id, channel_id, user_id, username, subject, priority, ticket_number) 
+                                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                                [guildId, channelId, userId, username, subject, priority, ticketNumber],
+                                function(err) {
+                                    if (err) reject(err);
+                                    else resolve({ ticketId: this.lastID, ticketNumber });
+                                }
+                            );
+                        }
+                    );
+                }
+            );
+        });
+    }
+
+    async getTicket(channelId) {
+        return new Promise((resolve, reject) => {
+            this.db.get(
+                'SELECT * FROM tickets WHERE channel_id = ? AND status != "closed"',
+                [channelId],
+                (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                }
+            );
+        });
+    }
+
+    async getTicketById(ticketId) {
+        return new Promise((resolve, reject) => {
+            this.db.get(
+                'SELECT * FROM tickets WHERE id = ?',
+                [ticketId],
+                (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                }
+            );
+        });
+    }
+
+    async updateTicket(ticketId, updates) {
+        return new Promise((resolve, reject) => {
+            const updateColumns = Object.keys(updates).map(key => `${key} = ?`).join(', ');
+            const values = [...Object.values(updates), ticketId];
+            
+            this.db.run(
+                `UPDATE tickets SET ${updateColumns}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+                values,
+                function(err) {
+                    if (err) reject(err);
+                    else resolve(this.changes);
+                }
+            );
+        });
+    }
+
+    async closeTicket(ticketId, reason = 'No reason provided') {
+        return new Promise((resolve, reject) => {
+            this.db.run(
+                `UPDATE tickets SET status = 'closed', closed_at = CURRENT_TIMESTAMP, close_reason = ? WHERE id = ?`,
+                [reason, ticketId],
+                function(err) {
+                    if (err) reject(err);
+                    else resolve(this.changes);
+                }
+            );
+        });
+    }
+
+    async getTicketConfig(guildId) {
+        return new Promise((resolve, reject) => {
+            this.db.get(
+                'SELECT * FROM ticket_config WHERE guild_id = ?',
+                [guildId],
+                (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                }
+            );
+        });
+    }
+
+    async setTicketConfig(guildId, config) {
+        return new Promise((resolve, reject) => {
+            const columns = Object.keys(config).join(', ');
+            const placeholders = Object.keys(config).map(() => '?').join(', ');
+            const values = [guildId, ...Object.values(config)];
+            
+            this.db.run(
+                `INSERT OR REPLACE INTO ticket_config (guild_id, ${columns}, updated_at) VALUES (?, ${placeholders}, CURRENT_TIMESTAMP)`,
+                values,
+                function(err) {
+                    if (err) reject(err);
+                    else resolve(this.lastID);
+                }
+            );
+        });
+    }
+
+    async addTicketMessage(ticketId, userId, username, messageContent) {
+        return new Promise((resolve, reject) => {
+            this.db.run(
+                'INSERT INTO ticket_messages (ticket_id, user_id, username, message_content) VALUES (?, ?, ?, ?)',
+                [ticketId, userId, username, messageContent],
+                function(err) {
+                    if (err) reject(err);
+                    else resolve(this.lastID);
+                }
+            );
+        });
+    }
+
+    async getTicketMessages(ticketId) {
+        return new Promise((resolve, reject) => {
+            this.db.all(
+                'SELECT * FROM ticket_messages WHERE ticket_id = ? ORDER BY timestamp ASC',
+                [ticketId],
+                (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows || []);
+                }
+            );
+        });
+    }
+
+    async getGuildTickets(guildId, status = 'open') {
+        return new Promise((resolve, reject) => {
+            this.db.all(
+                'SELECT * FROM tickets WHERE guild_id = ? AND status = ? ORDER BY created_at DESC',
+                [guildId, status],
                 (err, rows) => {
                     if (err) reject(err);
                     else resolve(rows || []);

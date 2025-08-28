@@ -263,7 +263,112 @@ const commands = [
         .addSubcommand(subcommand =>
             subcommand
                 .setName('remove')
-                .setDescription('Remove your birthday from the system'))
+                .setDescription('Remove your birthday from the system')),
+
+    // Ticketing System Commands
+    new SlashCommandBuilder()
+        .setName('createticket')
+        .setDescription('Create a new support ticket')
+        .addStringOption(option =>
+            option.setName('subject')
+                .setDescription('Brief description of your issue')
+                .setRequired(true)
+                .setMaxLength(100))
+        .addStringOption(option =>
+            option.setName('description')
+                .setDescription('Detailed description of your issue')
+                .setRequired(false)
+                .setMaxLength(1000)),
+
+    new SlashCommandBuilder()
+        .setName('closerequest')
+        .setDescription('Request to close the current ticket'),
+
+    new SlashCommandBuilder()
+        .setName('help')
+        .setDescription('Display bot help menu with public commands'),
+
+    // Admin ticket commands
+    new SlashCommandBuilder()
+        .setName('add')
+        .setDescription('Add a user to the current ticket')
+        .addUserOption(option =>
+            option.setName('user')
+                .setDescription('User to add to the ticket')
+                .setRequired(true))
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+
+    new SlashCommandBuilder()
+        .setName('claim')
+        .setDescription('Claim the current ticket')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+
+    new SlashCommandBuilder()
+        .setName('close')
+        .setDescription('Close the current ticket')
+        .addStringOption(option =>
+            option.setName('reason')
+                .setDescription('Reason for closing the ticket')
+                .setRequired(false))
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+
+    new SlashCommandBuilder()
+        .setName('adminhelp')
+        .setDescription('Display complete bot help menu including admin commands')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+    new SlashCommandBuilder()
+        .setName('panel')
+        .setDescription('Create a ticket panel for easy ticket creation')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+
+    new SlashCommandBuilder()
+        .setName('priority')
+        .setDescription('Set priority level for the current ticket')
+        .addStringOption(option =>
+            option.setName('level')
+                .setDescription('Priority level')
+                .setRequired(true)
+                .addChoices(
+                    { name: 'Low', value: 'low' },
+                    { name: 'Normal', value: 'normal' },
+                    { name: 'High', value: 'high' },
+                    { name: 'Urgent', value: 'urgent' }
+                ))
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+
+    new SlashCommandBuilder()
+        .setName('remove')
+        .setDescription('Remove a user from the current ticket')
+        .addUserOption(option =>
+            option.setName('user')
+                .setDescription('User to remove from the ticket')
+                .setRequired(true))
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+
+    new SlashCommandBuilder()
+        .setName('rename')
+        .setDescription('Rename the current ticket')
+        .addStringOption(option =>
+            option.setName('name')
+                .setDescription('New name for the ticket')
+                .setRequired(true)
+                .setMaxLength(50))
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+
+    new SlashCommandBuilder()
+        .setName('thread')
+        .setDescription('Create a private staff thread for the current ticket')
+        .addStringOption(option =>
+            option.setName('name')
+                .setDescription('Name for the staff thread')
+                .setRequired(false))
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+
+    new SlashCommandBuilder()
+        .setName('unclaim')
+        .setDescription('Unclaim the current ticket')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
 ];
 
 // When the client is ready, run this code (only once)
@@ -403,6 +508,59 @@ async function handleSlashCommand(interaction) {
             
             case 'birthday':
                 await handleBirthdayCommand(interaction);
+                break;
+            
+            // Ticketing System Commands
+            case 'createticket':
+                await handleCreateTicketCommand(interaction);
+                break;
+            
+            case 'closerequest':
+                await handleCloseRequestCommand(interaction);
+                break;
+            
+            case 'help':
+                await handleHelpCommand(interaction);
+                break;
+            
+            case 'add':
+                await handleAddUserCommand(interaction);
+                break;
+            
+            case 'claim':
+                await handleClaimCommand(interaction);
+                break;
+            
+            case 'close':
+                await handleCloseTicketCommand(interaction);
+                break;
+            
+            case 'adminhelp':
+                await handleAdminHelpCommand(interaction);
+                break;
+            
+            case 'panel':
+                await handlePanelCommand(interaction);
+                break;
+            
+            case 'priority':
+                await handlePriorityCommand(interaction);
+                break;
+            
+            case 'remove':
+                await handleRemoveUserCommand(interaction);
+                break;
+            
+            case 'rename':
+                await handleRenameCommand(interaction);
+                break;
+            
+            case 'thread':
+                await handleThreadCommand(interaction);
+                break;
+            
+            case 'unclaim':
+                await handleUnclaimCommand(interaction);
                 break;
             
             default:
@@ -1776,13 +1934,176 @@ async function handleButton(interaction) {
                 await handleAdvancedReset(interaction);
                 break;
             
+            // Ticket Panel Button
+            case 'create_ticket_panel':
+                await handleCreateTicketPanel(interaction);
+                break;
+            
             default:
-                await interaction.reply({ content: 'Unknown button interaction!', ephemeral: true });
+                // Check for dynamic ticket buttons
+                if (customId.startsWith('ticket_close_')) {
+                    await handleTicketCloseButton(interaction);
+                } else if (customId.startsWith('ticket_claim_')) {
+                    await handleTicketClaimButton(interaction);
+                } else if (customId.startsWith('ticket_close_confirm_')) {
+                    await handleTicketCloseConfirm(interaction);
+                } else if (customId.startsWith('ticket_close_cancel_')) {
+                    await handleTicketCloseCancel(interaction);
+                } else {
+                    await interaction.reply({ content: 'Unknown button interaction!', ephemeral: true });
+                }
+                break;
         }
     } catch (error) {
         console.error('Button error:', error);
         await interaction.reply({ content: 'There was an error processing your request!', ephemeral: true });
     }
+}
+
+// Ticket Button Handlers
+async function handleTicketCloseButton(interaction) {
+    try {
+        const ticketId = interaction.customId.split('_')[2];
+        const ticket = await database.getTicket(ticketId);
+        
+        if (!ticket) {
+            return await interaction.reply({ content: 'Ticket not found!', ephemeral: true });
+        }
+        
+        // Create confirmation embed
+        const embed = new EmbedBuilder()
+            .setTitle('🔒 Close Ticket Confirmation')
+            .setDescription('Are you sure you want to close this ticket? This action cannot be undone.')
+            .setColor(0xE74C3C);
+        
+        const buttons = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`ticket_close_confirm_${ticket.id}`)
+                    .setLabel('✅ Confirm Close')
+                    .setStyle(ButtonStyle.Danger),
+                new ButtonBuilder()
+                    .setCustomId(`ticket_close_cancel_${ticket.id}`)
+                    .setLabel('❌ Cancel')
+                    .setStyle(ButtonStyle.Secondary)
+            );
+        
+        await interaction.reply({ embeds: [embed], components: [buttons], ephemeral: true });
+    } catch (error) {
+        console.error('Close ticket button error:', error);
+        await interaction.reply({ content: 'Error processing close request!', ephemeral: true });
+    }
+}
+
+async function handleTicketClaimButton(interaction) {
+    try {
+        const ticketId = interaction.customId.split('_')[2];
+        const ticket = await database.getTicket(ticketId);
+        
+        if (!ticket) {
+            return await interaction.reply({ content: 'Ticket not found!', ephemeral: true });
+        }
+        
+        if (ticket.claimed_by) {
+            return await interaction.reply({ content: 'This ticket has already been claimed!', ephemeral: true });
+        }
+        
+        // Update ticket with claimer
+        await database.updateTicket(ticketId, {
+            claimed_by: interaction.user.id,
+            claimed_at: new Date().toISOString()
+        });
+        
+        // Update embed
+        const embed = new EmbedBuilder()
+            .setTitle(`🎫 Support Ticket #${ticket.ticket_number}`)
+            .setDescription(`**Subject:** ${ticket.subject}\n**Status:** Claimed by ${interaction.user}`)
+            .addFields(
+                { name: '👤 Created by', value: `<@${ticket.user_id}>`, inline: true },
+                { name: '👋 Claimed by', value: `${interaction.user}`, inline: true },
+                { name: '📅 Created at', value: `<t:${Math.floor(new Date(ticket.created_at).getTime() / 1000)}:F>`, inline: false }
+            )
+            .setColor(0x2ECC71)
+            .setThumbnail(interaction.user.displayAvatarURL());
+        
+        const buttons = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`ticket_close_${ticket.id}`)
+                    .setLabel('🔒 Close Ticket')
+                    .setStyle(ButtonStyle.Danger),
+                new ButtonBuilder()
+                    .setCustomId(`ticket_claim_${ticket.id}`)
+                    .setLabel('👋 Claimed')
+                    .setStyle(ButtonStyle.Success)
+                    .setDisabled(true)
+            );
+        
+        await interaction.update({ embeds: [embed], components: [buttons] });
+        
+        // Send claim notification
+        await interaction.followUp({ 
+            content: `🎫 Ticket has been claimed by ${interaction.user}!`,
+            ephemeral: false 
+        });
+        
+    } catch (error) {
+        console.error('Claim ticket button error:', error);
+        await interaction.reply({ content: 'Error claiming ticket!', ephemeral: true });
+    }
+}
+
+async function handleTicketCloseConfirm(interaction) {
+    try {
+        const ticketId = interaction.customId.split('_')[3];
+        const ticket = await database.getTicket(ticketId);
+        
+        if (!ticket) {
+            return await interaction.reply({ content: 'Ticket not found!', ephemeral: true });
+        }
+        
+        // Close the ticket
+        await database.closeTicket(ticketId, interaction.user.id);
+        
+        // Send closure message
+        const embed = new EmbedBuilder()
+            .setTitle('🔒 Ticket Closed')
+            .setDescription(`This ticket has been closed by ${interaction.user}.\n\nThank you for using our support system!`)
+            .addFields(
+                { name: '👤 Closed by', value: `${interaction.user}`, inline: true },
+                { name: '📅 Closed at', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
+            )
+            .setColor(0x95A5A6);
+        
+        await interaction.channel.send({ embeds: [embed] });
+        
+        // Archive the channel after 10 seconds
+        await interaction.update({ 
+            content: '✅ Ticket has been closed. This channel will be archived in 10 seconds.',
+            embeds: [], 
+            components: [] 
+        });
+        
+        setTimeout(async () => {
+            try {
+                await interaction.channel.delete();
+            } catch (error) {
+                console.error('Error deleting ticket channel:', error);
+            }
+        }, 10000);
+        
+    } catch (error) {
+        console.error('Confirm close ticket error:', error);
+        await interaction.reply({ content: 'Error closing ticket!', ephemeral: true });
+    }
+}
+
+async function handleTicketCloseCancel(interaction) {
+    await interaction.update({ 
+        content: '❌ Ticket close cancelled.',
+        embeds: [], 
+        components: [] 
+    });
 }
 
 async function handleSpamToggle(interaction) {
@@ -2057,6 +2378,10 @@ async function handleModal(interaction) {
             
             case 'panic_roles_config_modal':
                 await handlePanicRolesConfigModal(interaction);
+                break;
+            
+            case 'create_ticket_modal':
+                await handleCreateTicketModal(interaction);
                 break;
         }
     } catch (error) {
@@ -2538,6 +2863,600 @@ async function handleAdvancedResetConfirm(interaction) {
 async function handleAdvancedResetCancel(interaction) {
     const advancedMenu = await setupSystem.createAdvancedSettingsMenu(interaction.guild.id);
     await interaction.update(advancedMenu);
+}
+
+// ===== TICKETING SYSTEM HANDLERS =====
+
+async function handleCreateTicketCommand(interaction) {
+    try {
+        const subject = interaction.options.getString('subject');
+        const description = interaction.options.getString('description') || 'No additional description provided.';
+        
+        // Check if user already has an open ticket
+        const existingTickets = await database.getGuildTickets(interaction.guild.id, 'open');
+        const userTicket = existingTickets.find(ticket => ticket.user_id === interaction.user.id);
+        
+        if (userTicket) {
+            const embed = new EmbedBuilder()
+                .setTitle('❌ Ticket Already Exists')
+                .setDescription(`You already have an open ticket: <#${userTicket.channel_id}>`)
+                .setColor(0xFF6B6B);
+            
+            return await interaction.reply({ embeds: [embed], ephemeral: true });
+        }
+        
+        // Get ticket configuration
+        const config = await database.getTicketConfig(interaction.guild.id);
+        
+        // Create ticket channel
+        const ticketResult = await database.createTicket(
+            interaction.guild.id,
+            null, // Channel ID will be updated after creation
+            interaction.user.id,
+            interaction.user.username,
+            subject
+        );
+        
+        const channelName = `supportticket-${ticketResult.ticketNumber}`;
+        
+        // Create private channel
+        const ticketChannel = await interaction.guild.channels.create({
+            name: channelName,
+            type: 0, // Text channel
+            parent: config?.ticket_category_id || null,
+            permissionOverwrites: [
+                {
+                    id: interaction.guild.roles.everyone.id,
+                    deny: ['ViewChannel']
+                },
+                {
+                    id: interaction.user.id,
+                    allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory']
+                },
+                {
+                    id: interaction.client.user.id,
+                    allow: ['ViewChannel', 'SendMessages', 'ManageChannels', 'ManageMessages']
+                }
+            ]
+        });
+        
+        // Add staff role if configured
+        if (config?.staff_role_id) {
+            await ticketChannel.permissionOverwrites.create(config.staff_role_id, {
+                ViewChannel: true,
+                SendMessages: true,
+                ReadMessageHistory: true,
+                ManageMessages: true
+            });
+        }
+        
+        // Update ticket with channel ID
+        await database.updateTicket(ticketResult.ticketId, { channel_id: ticketChannel.id });
+        
+        // Create ticket embed
+        const ticketEmbed = new EmbedBuilder()
+            .setTitle(`🎫 Support Ticket #${ticketResult.ticketNumber}`)
+            .setDescription(`**Subject:** ${subject}\n**Description:** ${description}`)
+            .addFields(
+                { name: '👤 Created by', value: `${interaction.user}`, inline: true },
+                { name: '📅 Created at', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
+                { name: '🏷️ Priority', value: 'Normal', inline: true }
+            )
+            .setColor(0x3742FA)
+            .setThumbnail(interaction.user.displayAvatarURL());
+        
+        const buttons = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`ticket_close_${ticketResult.ticketId}`)
+                    .setLabel('🔒 Close Ticket')
+                    .setStyle(ButtonStyle.Danger),
+                new ButtonBuilder()
+                    .setCustomId(`ticket_claim_${ticketResult.ticketId}`)
+                    .setLabel('👋 Claim Ticket')
+                    .setStyle(ButtonStyle.Success)
+            );
+        
+        await ticketChannel.send({ embeds: [ticketEmbed], components: [buttons] });
+        
+        // Confirmation message
+        const confirmEmbed = new EmbedBuilder()
+            .setTitle('✅ Ticket Created')
+            .setDescription(`Your support ticket has been created: ${ticketChannel}`)
+            .setColor(0x2ECC71);
+        
+        await interaction.reply({ embeds: [confirmEmbed], ephemeral: true });
+        
+    } catch (error) {
+        console.error('Create ticket error:', error);
+        await interaction.reply({ 
+            content: 'There was an error creating your ticket. Please try again later.',
+            ephemeral: true 
+        });
+    }
+}
+
+async function handleCloseRequestCommand(interaction) {
+    try {
+        const ticket = await database.getTicket(interaction.channel.id);
+        
+        if (!ticket) {
+            return await interaction.reply({ 
+                content: '❌ This command can only be used in a support ticket.',
+                ephemeral: true 
+            });
+        }
+        
+        if (ticket.user_id !== interaction.user.id) {
+            return await interaction.reply({ 
+                content: '❌ Only the ticket creator can request to close this ticket.',
+                ephemeral: true 
+            });
+        }
+        
+        const embed = new EmbedBuilder()
+            .setTitle('🔒 Close Request')
+            .setDescription(`${interaction.user} has requested to close this ticket.`)
+            .setColor(0xF39C12)
+            .setTimestamp();
+        
+        const buttons = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`ticket_close_confirm_${ticket.id}`)
+                    .setLabel('✅ Close Ticket')
+                    .setStyle(ButtonStyle.Danger),
+                new ButtonBuilder()
+                    .setCustomId(`ticket_close_cancel_${ticket.id}`)
+                    .setLabel('❌ Keep Open')
+                    .setStyle(ButtonStyle.Secondary)
+            );
+        
+        await interaction.reply({ embeds: [embed], components: [buttons] });
+        
+    } catch (error) {
+        console.error('Close request error:', error);
+        await interaction.reply({ 
+            content: 'There was an error processing your close request.',
+            ephemeral: true 
+        });
+    }
+}
+
+async function handleHelpCommand(interaction) {
+    const embed = new EmbedBuilder()
+        .setTitle('🧀 CheeseBot - Help Menu')
+        .setDescription('**All-in-One Discord Security & Utility Bot**')
+        .addFields(
+            {
+                name: '🎫 Ticketing Commands',
+                value: '`/createticket` - Create a new support ticket\n`/closerequest` - Request to close your ticket',
+                inline: false
+            },
+            {
+                name: '🎨 Fun Commands',
+                value: '`/ascii` - Convert text to ASCII art',
+                inline: false
+            },
+            {
+                name: '💡 Utility Commands',
+                value: '`/suggest` - Make a suggestion\n`/report` - Report an issue\n`/afk` - Set yourself as AFK',
+                inline: false
+            },
+            {
+                name: '🎂 Social Commands',
+                value: '`/birthday set` - Set your birthday\n`/birthday view` - View birthdays\n`/birthday remove` - Remove your birthday',
+                inline: false
+            },
+            {
+                name: '🛡️ Security Features',
+                value: '• Spam Protection\n• Raid Protection\n• Anti-Nuke Protection\n• Auto-Moderation\n• Warning System',
+                inline: false
+            }
+        )
+        .setColor(0x3742FA)
+        .setThumbnail(interaction.client.user.displayAvatarURL())
+        .setFooter({ text: 'Use /adminhelp for administrative commands (requires permissions)' });
+    
+    await interaction.reply({ embeds: [embed] });
+}
+
+async function handleAdminHelpCommand(interaction) {
+    // Check authentication
+    const authCheck = await authSystem.requireAuthentication(interaction);
+    if (authCheck.required) {
+        return await interaction.reply(authCheck.response);
+    }
+    
+    const embed = new EmbedBuilder()
+        .setTitle('🛡️ CheeseBot - Admin Help Menu')
+        .setDescription('**Complete Administrative Command Reference**')
+        .addFields(
+            {
+                name: '🔧 Setup Commands',
+                value: '`/setup` - Main bot configuration\n`/config` - Server configuration\n`/status` - Bot status\n`/diagnose` - Run diagnostics',
+                inline: false
+            },
+            {
+                name: '🎫 Ticket Management',
+                value: '`/panel` - Create ticket panel\n`/add` - Add user to ticket\n`/remove` - Remove user from ticket\n`/claim` - Claim ticket\n`/unclaim` - Unclaim ticket\n`/close` - Close ticket\n`/rename` - Rename ticket\n`/thread` - Create staff thread\n`/priority` - Set ticket priority',
+                inline: false
+            },
+            {
+                name: '👥 User Management',
+                value: '`/user auth` - Manage bot access\n`/user grant` - Grant access\n`/user revoke` - Revoke access\n`/user list` - List authorized users\n`/clear` - Clear messages',
+                inline: false
+            },
+            {
+                name: '🔐 Authentication',
+                value: '`/login` - Login to bot\n`/logout` - Logout from bot\n`/msg` - Send authenticated message',
+                inline: false
+            },
+            {
+                name: '🛡️ Security Systems',
+                value: '• **Spam Protection** - Message flood detection\n• **Raid Protection** - Mass join detection\n• **Anti-Nuke** - Destructive action prevention\n• **Auto-Moderation** - Content filtering\n• **Warning System** - Progressive discipline\n• **Panic Mode** - Emergency lockdown',
+                inline: false
+            }
+        )
+        .setColor(0xFF6B6B)
+        .setThumbnail(interaction.client.user.displayAvatarURL())
+        .setFooter({ text: 'CheeseBot v1.0 - Complete Security Solution' });
+    
+    await interaction.reply({ embeds: [embed], ephemeral: true });
+}
+
+async function handlePanelCommand(interaction) {
+    try {
+        // Check authentication
+        const authCheck = await authSystem.requireAuthentication(interaction);
+        if (authCheck.required) {
+            return await interaction.reply(authCheck.response);
+        }
+        
+        const embed = new EmbedBuilder()
+            .setTitle('🎫 Support Ticket System')
+            .setDescription('Need help? Create a support ticket and our team will assist you!')
+            .addFields(
+                {
+                    name: '📋 How it Works',
+                    value: '1. Click the button below\n2. Fill out the ticket information\n3. Wait for staff to respond\n4. Your issue will be resolved!',
+                    inline: false
+                },
+                {
+                    name: '⏱️ Response Time',
+                    value: 'We typically respond within 24 hours',
+                    inline: true
+                },
+                {
+                    name: '🏷️ Ticket Types',
+                    value: 'Support, Reports, Appeals, General',
+                    inline: true
+                }
+            )
+            .setColor(0x3742FA)
+            .setThumbnail(interaction.guild.iconURL());
+        
+        const button = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('create_ticket_panel')
+                    .setLabel('🎫 Create Ticket')
+                    .setStyle(ButtonStyle.Primary)
+            );
+        
+        await interaction.reply({ embeds: [embed], components: [button] });
+        
+    } catch (error) {
+        console.error('Panel command error:', error);
+        await interaction.reply({ 
+            content: 'There was an error creating the ticket panel.',
+            ephemeral: true 
+        });
+    }
+}
+
+async function handleCreateTicketPanel(interaction) {
+    // This will show a modal to create a ticket
+    const modal = new ModalBuilder()
+        .setCustomId('create_ticket_modal')
+        .setTitle('Create Support Ticket');
+
+    const subjectInput = new TextInputBuilder()
+        .setCustomId('ticket_subject')
+        .setLabel('Subject')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('Brief description of your issue')
+        .setMaxLength(100)
+        .setRequired(true);
+
+    const descriptionInput = new TextInputBuilder()
+        .setCustomId('ticket_description')
+        .setLabel('Description')
+        .setStyle(TextInputStyle.Paragraph)
+        .setPlaceholder('Detailed description of your issue')
+        .setMaxLength(1000)
+        .setRequired(false);
+
+    modal.addComponents(
+        new ActionRowBuilder().addComponents(subjectInput),
+        new ActionRowBuilder().addComponents(descriptionInput)
+    );
+
+    await interaction.showModal(modal);
+}
+
+// Add ticket-specific command handlers
+async function handleAddUserCommand(interaction) {
+    try {
+        const ticket = await database.getTicket(interaction.channel.id);
+        if (!ticket) {
+            return await interaction.reply({ 
+                content: '❌ This command can only be used in a support ticket.',
+                ephemeral: true 
+            });
+        }
+        
+        const user = interaction.options.getUser('user');
+        
+        // Add user to channel permissions
+        await interaction.channel.permissionOverwrites.create(user.id, {
+            ViewChannel: true,
+            SendMessages: true,
+            ReadMessageHistory: true
+        });
+        
+        const embed = new EmbedBuilder()
+            .setTitle('✅ User Added')
+            .setDescription(`${user} has been added to this ticket.`)
+            .setColor(0x2ECC71);
+        
+        await interaction.reply({ embeds: [embed] });
+        
+    } catch (error) {
+        console.error('Add user error:', error);
+        await interaction.reply({ content: 'Failed to add user to ticket.', ephemeral: true });
+    }
+}
+
+async function handleClaimCommand(interaction) {
+    try {
+        const ticket = await database.getTicket(interaction.channel.id);
+        if (!ticket) {
+            return await interaction.reply({ 
+                content: '❌ This command can only be used in a support ticket.',
+                ephemeral: true 
+            });
+        }
+        
+        if (ticket.claimed_by) {
+            return await interaction.reply({ 
+                content: `❌ This ticket is already claimed by <@${ticket.claimed_by}>.`,
+                ephemeral: true 
+            });
+        }
+        
+        await database.updateTicket(ticket.id, {
+            claimed_by: interaction.user.id,
+            claimed_by_username: interaction.user.username
+        });
+        
+        const embed = new EmbedBuilder()
+            .setTitle('👋 Ticket Claimed')
+            .setDescription(`This ticket has been claimed by ${interaction.user}`)
+            .setColor(0x3742FA)
+            .setTimestamp();
+        
+        await interaction.reply({ embeds: [embed] });
+        
+    } catch (error) {
+        console.error('Claim ticket error:', error);
+        await interaction.reply({ content: 'Failed to claim ticket.', ephemeral: true });
+    }
+}
+
+async function handleCloseTicketCommand(interaction) {
+    try {
+        const ticket = await database.getTicket(interaction.channel.id);
+        if (!ticket) {
+            return await interaction.reply({ 
+                content: '❌ This command can only be used in a support ticket.',
+                ephemeral: true 
+            });
+        }
+        
+        const reason = interaction.options.getString('reason') || 'No reason provided';
+        
+        await database.closeTicket(ticket.id, reason);
+        
+        const embed = new EmbedBuilder()
+            .setTitle('🔒 Ticket Closed')
+            .setDescription(`This ticket has been closed by ${interaction.user}`)
+            .addFields(
+                { name: 'Reason', value: reason, inline: false },
+                { name: 'Closed at', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
+            )
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [embed] });
+        
+        // Delete channel after 10 seconds
+        setTimeout(async () => {
+            try {
+                await interaction.channel.delete();
+            } catch (deleteError) {
+                console.error('Error deleting ticket channel:', deleteError);
+            }
+        }, 10000);
+        
+    } catch (error) {
+        console.error('Close ticket error:', error);
+        await interaction.reply({ content: 'Failed to close ticket.', ephemeral: true });
+    }
+}
+
+async function handlePriorityCommand(interaction) {
+    try {
+        const ticket = await database.getTicket(interaction.channel.id);
+        if (!ticket) {
+            return await interaction.reply({ 
+                content: '❌ This command can only be used in a support ticket.',
+                ephemeral: true 
+            });
+        }
+        
+        const priority = interaction.options.getString('level');
+        
+        await database.updateTicket(ticket.id, { priority });
+        
+        const priorityColors = {
+            low: 0x95A5A6,
+            normal: 0x3742FA,
+            high: 0xF39C12,
+            urgent: 0xE74C3C
+        };
+        
+        const embed = new EmbedBuilder()
+            .setTitle('🏷️ Priority Updated')
+            .setDescription(`Ticket priority has been set to **${priority.toUpperCase()}**`)
+            .setColor(priorityColors[priority] || 0x3742FA);
+        
+        await interaction.reply({ embeds: [embed] });
+        
+    } catch (error) {
+        console.error('Priority command error:', error);
+        await interaction.reply({ content: 'Failed to set priority.', ephemeral: true });
+    }
+}
+
+async function handleRemoveUserCommand(interaction) {
+    try {
+        const ticket = await database.getTicket(interaction.channel.id);
+        if (!ticket) {
+            return await interaction.reply({ 
+                content: '❌ This command can only be used in a support ticket.',
+                ephemeral: true 
+            });
+        }
+        
+        const user = interaction.options.getUser('user');
+        
+        // Remove user from channel permissions
+        await interaction.channel.permissionOverwrites.delete(user.id);
+        
+        const embed = new EmbedBuilder()
+            .setTitle('❌ User Removed')
+            .setDescription(`${user} has been removed from this ticket.`)
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [embed] });
+        
+    } catch (error) {
+        console.error('Remove user error:', error);
+        await interaction.reply({ content: 'Failed to remove user from ticket.', ephemeral: true });
+    }
+}
+
+async function handleRenameCommand(interaction) {
+    try {
+        const ticket = await database.getTicket(interaction.channel.id);
+        if (!ticket) {
+            return await interaction.reply({ 
+                content: '❌ This command can only be used in a support ticket.',
+                ephemeral: true 
+            });
+        }
+        
+        const newName = interaction.options.getString('name');
+        
+        await interaction.channel.setName(newName);
+        
+        const embed = new EmbedBuilder()
+            .setTitle('✏️ Ticket Renamed')
+            .setDescription(`Ticket has been renamed to **${newName}**`)
+            .setColor(0x3742FA);
+        
+        await interaction.reply({ embeds: [embed] });
+        
+    } catch (error) {
+        console.error('Rename command error:', error);
+        await interaction.reply({ content: 'Failed to rename ticket.', ephemeral: true });
+    }
+}
+
+async function handleThreadCommand(interaction) {
+    try {
+        const ticket = await database.getTicket(interaction.channel.id);
+        if (!ticket) {
+            return await interaction.reply({ 
+                content: '❌ This command can only be used in a support ticket.',
+                ephemeral: true 
+            });
+        }
+        
+        const threadName = interaction.options.getString('name') || `Staff Discussion - Ticket #${ticket.ticket_number}`;
+        
+        const thread = await interaction.channel.threads.create({
+            name: threadName,
+            autoArchiveDuration: 1440, // 24 hours
+            type: 12 // Private thread
+        });
+        
+        await database.updateTicket(ticket.id, { thread_id: thread.id });
+        
+        const embed = new EmbedBuilder()
+            .setTitle('🧵 Staff Thread Created')
+            .setDescription(`Private staff thread created: ${thread}`)
+            .setColor(0x3742FA);
+        
+        await interaction.reply({ embeds: [embed] });
+        
+    } catch (error) {
+        console.error('Thread command error:', error);
+        await interaction.reply({ content: 'Failed to create staff thread.', ephemeral: true });
+    }
+}
+
+async function handleUnclaimCommand(interaction) {
+    try {
+        const ticket = await database.getTicket(interaction.channel.id);
+        if (!ticket) {
+            return await interaction.reply({ 
+                content: '❌ This command can only be used in a support ticket.',
+                ephemeral: true 
+            });
+        }
+        
+        if (!ticket.claimed_by) {
+            return await interaction.reply({ 
+                content: '❌ This ticket is not currently claimed.',
+                ephemeral: true 
+            });
+        }
+        
+        if (ticket.claimed_by !== interaction.user.id) {
+            return await interaction.reply({ 
+                content: '❌ You can only unclaim tickets that you have claimed.',
+                ephemeral: true 
+            });
+        }
+        
+        await database.updateTicket(ticket.id, {
+            claimed_by: null,
+            claimed_by_username: null
+        });
+        
+        const embed = new EmbedBuilder()
+            .setTitle('👋 Ticket Unclaimed')
+            .setDescription(`This ticket has been unclaimed by ${interaction.user}`)
+            .setColor(0xF39C12)
+            .setTimestamp();
+        
+        await interaction.reply({ embeds: [embed] });
+        
+    } catch (error) {
+        console.error('Unclaim ticket error:', error);
+        await interaction.reply({ content: 'Failed to unclaim ticket.', ephemeral: true });
+    }
 }
 
 // Authentication button handlers
