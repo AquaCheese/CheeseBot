@@ -575,12 +575,15 @@ async function handleButton(interaction) {
         }
     } catch (error) {
         console.error('Button interaction error:', error);
-        const response = { content: 'There was an error processing this button interaction!', flags: [4096] }; // MessageFlags.Ephemeral
         
-        if (interaction.replied || interaction.deferred) {
-            await interaction.followUp(response);
-        } else {
-            await interaction.reply(response);
+        // Only respond if the interaction hasn't been handled yet
+        if (!interaction.replied && !interaction.deferred) {
+            try {
+                const response = { content: 'There was an error processing this button interaction!', flags: [4096] };
+                await interaction.reply(response);
+            } catch (replyError) {
+                console.error('Failed to send button error response:', replyError);
+            }
         }
     }
 }
@@ -3165,12 +3168,15 @@ async function handleModal(interaction) {
         }
     } catch (error) {
         console.error('Modal error:', error);
-        const response = { content: 'There was an error processing your submission!', ephemeral: true };
         
-        if (interaction.replied || interaction.deferred) {
-            await interaction.followUp(response);
-        } else {
-            await interaction.reply(response);
+        // Only respond if the interaction hasn't been handled yet
+        if (!interaction.replied && !interaction.deferred) {
+            try {
+                const response = { content: 'There was an error processing your submission!', flags: [4096] };
+                await interaction.reply(response);
+            } catch (replyError) {
+                console.error('Failed to send error response:', replyError);
+            }
         }
     }
 }

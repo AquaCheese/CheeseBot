@@ -21,6 +21,7 @@ class AuthenticationSystem {
 
     async initializeAuthTables() {
         return new Promise((resolve, reject) => {
+            console.log('[AUTH DEBUG] Initializing auth tables...');
             this.db.db.run(`
                 CREATE TABLE IF NOT EXISTS auth_users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,8 +37,21 @@ class AuthenticationSystem {
                     locked_until DATETIME
                 )
             `, (err) => {
-                if (err) reject(err);
-                else resolve();
+                if (err) {
+                    console.log('[AUTH DEBUG] Error creating auth tables:', err);
+                    reject(err);
+                } else {
+                    console.log('[AUTH DEBUG] Auth tables initialized successfully');
+                    // Check if any users exist
+                    this.db.db.get('SELECT COUNT(*) as count FROM auth_users', [], (countErr, row) => {
+                        if (countErr) {
+                            console.log('[AUTH DEBUG] Error counting users:', countErr);
+                        } else {
+                            console.log(`[AUTH DEBUG] Current user count in database: ${row.count}`);
+                        }
+                    });
+                    resolve();
+                }
             });
         });
     }
@@ -70,12 +84,26 @@ class AuthenticationSystem {
 
     async getUser(userId) {
         return new Promise((resolve, reject) => {
+            console.log(`[AUTH DEBUG] Querying database for user ID: ${userId}`);
             this.db.db.get(
                 'SELECT * FROM auth_users WHERE user_id = ?',
                 [userId],
                 (err, row) => {
-                    if (err) reject(err);
-                    else resolve(row);
+                    if (err) {
+                        console.log(`[AUTH DEBUG] Database error:`, err);
+                        reject(err);
+                    } else {
+                        console.log(`[AUTH DEBUG] Database result:`, row ? 'User found' : 'User not found');
+                        if (row) {
+                            console.log(`[AUTH DEBUG] User data:`, {
+                                user_id: row.user_id,
+                                username: row.username,
+                                has_totp_secret: !!row.totp_secret,
+                                is_setup_complete: row.is_setup_complete
+                            });
+                        }
+                        resolve(row);
+                    }
                 }
             );
         });
@@ -252,10 +280,12 @@ class AuthenticationSystem {
         const hashedPassword = await bcrypt.hash(password, 12);
 
         // Check if user already exists (incomplete setup)
+        console.log(`[AUTH DEBUG] About to call getUser for ${userId}`);
         const existingUser = await this.getUser(userId);
         console.log(`[AUTH DEBUG] Found existing user for ${userId}:`, existingUser ? 'YES' : 'NO');
         if (existingUser) {
             console.log(`[AUTH DEBUG] Existing user has TOTP secret:`, existingUser.totp_secret ? 'YES' : 'NO');
+            console.log(`[AUTH DEBUG] Existing user setup complete:`, existingUser.is_setup_complete);
         }
         let secret, backupCodes;
 
