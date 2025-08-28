@@ -4424,7 +4424,7 @@ async function handleAuthLoginSubmit(interaction) {
             .setTitle('✅ Login Successful')
             .setDescription(`Welcome back, ${interaction.user.username}! You are now authenticated.`)
             .addFields(
-                { name: '🕒 Session Duration', value: '24 hours', inline: true },
+                { name: '🕒 Session Duration', value: '72 hours', inline: true },
                 { name: '🛡️ Security Status', value: 'Fully authenticated', inline: true }
             )
             .setColor(0x2ECC71);

@@ -11,7 +11,7 @@ class AuthenticationSystem {
         this.setupAttempts = new Map(); // userId -> { attempts, lastAttempt }
         this.maxAttempts = 3;
         this.lockoutDuration = 15 * 60 * 1000; // 15 minutes
-        this.sessionDuration = 24 * 60 * 60 * 1000; // 24 hours
+        this.sessionDuration = 72 * 60 * 60 * 1000; // 24 hours
         this.jwtSecret = process.env.JWT_SECRET || this.generateRandomSecret();
     }
 
@@ -595,7 +595,7 @@ class AuthenticationSystem {
                     inline: false 
                 }
             )
-            .setFooter({ text: 'Your authentication session is active for 24 hours' });
+            .setFooter({ text: 'Your authentication session is active for 72 hours' });
 
         return { embeds: [embed] };
     }
