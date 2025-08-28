@@ -3329,36 +3329,6 @@ async function handleWarningConfigModal(interaction) {
     }
 }
 
-// Missing authentication modal handlers - CRITICAL SECURITY FIXES
-async function handleAuthPasswordSetup(interaction) {
-    try {
-        const password = interaction.fields.getTextInputValue('password');
-        const confirmPassword = interaction.fields.getTextInputValue('confirm_password');
-        
-        const result = await authSystem.setupPassword(
-            interaction.user.id, 
-            interaction.user.username, 
-            password, 
-            confirmPassword
-        );
-        
-        // Generate QR code
-        const qrBuffer = await authSystem.generateQRCode(result.qrCode);
-        const qrSetup = await authSystem.createQRSetupEmbed(result.secret, qrBuffer, result.backupCodes);
-        
-        await interaction.reply({ ...qrSetup, flags: [4096] });
-        
-    } catch (error) {
-        console.error('Auth password setup error:', error);
-        const errorEmbed = new EmbedBuilder()
-            .setTitle('❌ Setup Error')
-            .setDescription(`Failed to set up authentication: ${error.message}`)
-            .setColor(0xE74C3C);
-        
-        await interaction.reply({ embeds: [errorEmbed], flags: [4096] });
-    }
-}
-
 async function handleAuthLoginSubmit(interaction) {
     try {
         const password = interaction.fields.getTextInputValue('password');
@@ -4398,7 +4368,7 @@ async function handleAuthPasswordSetup(interaction) {
         // Create setup embed with QR code
         const setupEmbed = await authSystem.createQRSetupEmbed(result.secret, qrBuffer, result.backupCodes);
         
-        await interaction.reply({ ...setupEmbed, ephemeral: true });
+        await interaction.reply({ ...setupEmbed, flags: [4096] });
         
     } catch (error) {
         const embed = new EmbedBuilder()
@@ -4406,7 +4376,7 @@ async function handleAuthPasswordSetup(interaction) {
             .setDescription(`Error: ${error.message}`)
             .setColor(0xE74C3C);
         
-        await interaction.reply({ embeds: [embed], ephemeral: true });
+        await interaction.reply({ embeds: [embed], flags: [4096] });
     }
 }
 
@@ -4427,7 +4397,7 @@ async function handleAuthLoginSubmit(interaction) {
             )
             .setColor(0x2ECC71);
         
-        await interaction.reply({ embeds: [embed], ephemeral: true });
+        await interaction.reply({ embeds: [embed], flags: [4096] });
         
     } catch (error) {
         const embed = new EmbedBuilder()
@@ -4435,7 +4405,7 @@ async function handleAuthLoginSubmit(interaction) {
             .setDescription(`Error: ${error.message}`)
             .setColor(0xE74C3C);
         
-        await interaction.reply({ embeds: [embed], ephemeral: true });
+        await interaction.reply({ embeds: [embed], flags: [4096] });
     }
 }
 
@@ -4450,7 +4420,7 @@ async function handleAuthVerifySetupSubmit(interaction) {
         await authSystem.createSession(userId);
         
         const successEmbed = await authSystem.createSuccessEmbed(interaction.user.username);
-        await interaction.reply({ ...successEmbed, ephemeral: true });
+        await interaction.reply({ ...successEmbed, flags: [4096] });
         
     } catch (error) {
         const embed = new EmbedBuilder()
@@ -4458,7 +4428,7 @@ async function handleAuthVerifySetupSubmit(interaction) {
             .setDescription(`Error: ${error.message}`)
             .setColor(0xE74C3C);
         
-        await interaction.reply({ embeds: [embed], ephemeral: true });
+        await interaction.reply({ embeds: [embed], flags: [4096] });
     }
 }
 

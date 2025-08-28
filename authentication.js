@@ -253,11 +253,15 @@ class AuthenticationSystem {
 
         // Check if user already exists (incomplete setup)
         const existingUser = await this.getUser(userId);
+        console.log(`[AUTH DEBUG] Found existing user for ${userId}:`, existingUser ? 'YES' : 'NO');
+        if (existingUser) {
+            console.log(`[AUTH DEBUG] Existing user has TOTP secret:`, existingUser.totp_secret ? 'YES' : 'NO');
+        }
         let secret, backupCodes;
 
         if (existingUser && existingUser.totp_secret) {
             // User exists, use existing secret
-            console.log(`[AUTH] Using existing TOTP secret for user ${userId}`);
+            console.log(`[AUTH] Reusing existing TOTP secret for user ${userId}`);
             secret = {
                 base32: existingUser.totp_secret,
                 otpauth_url: `otpauth://totp/Guardian%20Security%20Bot:${username}?secret=${existingUser.totp_secret}&issuer=Guardian%20Security%20Bot`
@@ -434,19 +438,6 @@ class AuthenticationSystem {
                 function(err) {
                     if (err) reject(err);
                     else resolve();
-                }
-            );
-        });
-    }
-
-    async getUser(userId) {
-        return new Promise((resolve, reject) => {
-            this.db.db.get(
-                'SELECT * FROM auth_users WHERE user_id = ?',
-                [userId],
-                (err, row) => {
-                    if (err) reject(err);
-                    else resolve(row);
                 }
             );
         });
