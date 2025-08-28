@@ -1357,55 +1357,29 @@ async function handleAsciiCommand(interaction) {
             return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
         }
 
-        // Generate ASCII art in different classic styles
-        const standardStyle = generateAsciiArt(text, 'standard');
-        const smallStyle = generateAsciiArt(text, 'small');
-        const blockStyle = generateAsciiArt(text, 'block');
+        // Generate classic ASCII art
+        const asciiArt = generateAsciiArt(text);
         
-        // Create multiple embeds for different styles
-        const embeds = [];
-        
-        // Standard style (primary - classic ASCII art)
-        if (standardStyle.length < 4000) { // Discord embed description limit
-            const standardEmbed = new EmbedBuilder()
-                .setTitle('🎨 Classic ASCII Art')
-                .setDescription(`\`\`\`\n${standardStyle}\n\`\`\``)
-                .setColor(0x3498DB)
-                .setFooter({ text: `"${text}" by ${interaction.user.tag}` })
-                .setTimestamp();
-            embeds.push(standardEmbed);
-        }
-        
-        // Small style
-        if (smallStyle.length < 4000) {
-            const smallEmbed = new EmbedBuilder()
-                .setTitle('� Small ASCII Art')
-                .setDescription(`\`\`\`\n${smallStyle}\n\`\`\``)
-                .setColor(0xE67E22);
-            embeds.push(smallEmbed);
-        }
-        
-        // Block style
-        if (blockStyle.length < 4000) {
-            const blockEmbed = new EmbedBuilder()
-                .setTitle('� Block Style')
-                .setDescription(`\`\`\`\n${blockStyle}\n\`\`\``)
-                .setColor(0x9B59B6);
-            embeds.push(blockEmbed);
-        }
-        
-        // If no embeds were created (text too long), show error
-        if (embeds.length === 0) {
+        // Check if the result fits within Discord's embed limits
+        if (asciiArt.length >= 4000) {
             const errorEmbed = new EmbedBuilder()
-                .setTitle('❌ Text Too Complex')
+                .setTitle('❌ ASCII Art Too Large')
                 .setDescription('The generated ASCII art is too large to display. Try shorter text.')
                 .setColor(0xE74C3C);
             
             return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
         }
         
-        // Send all embeds (Discord allows up to 10 embeds per message)
-        await interaction.reply({ embeds: embeds.slice(0, 3) });
+        // Create embed with the classic ASCII art
+        const asciiEmbed = new EmbedBuilder()
+            .setTitle('🎨 Classic ASCII Art')
+            .setDescription(`\`\`\`\n${asciiArt}\n\`\`\``)
+            .setColor(0x3498DB)
+            .setFooter({ text: `"${text}" by ${interaction.user.tag}` })
+            .setTimestamp();
+
+        // Send the ASCII art
+        await interaction.reply({ embeds: [asciiEmbed] });
         
     } catch (error) {
         console.error('ASCII command error:', error);
@@ -1714,553 +1688,322 @@ async function handleBirthdayRemove(interaction) {
     }
 }
 
-// ASCII art generator function with multiple font styles
-function generateAsciiArt(text, fontStyle = 'standard') {
-    const fonts = {
-        'standard': {
-            'A': [
-                '     /\\     ',
-                '    /  \\    ',
-                '   / /\\ \\   ',
-                '  / ____ \\  ',
-                ' /_/    \\_\\ '
-            ],
-            'B': [
-                ' ______ ',
-                '|  __  \\',
-                '| |  | |',
-                '| |__| |',
-                '|______/'
-            ],
-            'C': [
-                '  _____ ',
-                ' / ____|',
-                '| |     ',
-                '| |____ ',
-                ' \\_____|'
-            ],
-            'D': [
-                ' _____  ',
-                '|  __ \\ ',
-                '| |  | |',
-                '| |__| |',
-                '|_____/ '
-            ],
-            'E': [
-                ' ______ ',
-                '|  ____|',
-                '| |__   ',
-                '|  __|  ',
-                '|______|'
-            ],
-            'F': [
-                ' ______ ',
-                '|  ____|',
-                '| |__   ',
-                '|  __|  ',
-                '|__|    '
-            ],
-            'G': [
-                '  _____ ',
-                ' / ____|',
-                '| |  __ ',
-                '| | |_ |',
-                ' \\_____|'
-            ],
-            'H': [
-                ' _    _ ',
-                '| |  | |',
-                '| |__| |',
-                '|  __  |',
-                '|_|  |_|'
-            ],
-            'I': [
-                ' _____ ',
-                '|_   _|',
-                '  | |  ',
-                '  | |  ',
-                ' |___| '
-            ],
-            'J': [
-                '      _ ',
-                '     | |',
-                '     | |',
-                ' _   | |',
-                '| |__| |',
-                ' \\____/ '
-            ],
-            'K': [
-                ' _  __ ',
-                '| |/ / ',
-                "| ' /  ",
-                '| . \\  ',
-                '|_|\\_\\ '
-            ],
-            'L': [
-                ' _      ',
-                '| |     ',
-                '| |     ',
-                '| |____ ',
-                '|______|'
-            ],
-            'M': [
-                ' __  __ ',
-                '|  \\/  |',
-                '| |\\/| |',
-                '| |  | |',
-                '|_|  |_|'
-            ],
-            'N': [
-                ' _   _ ',
-                '| \\ | |',
-                '|  \\| |',
-                '| |\\  |',
-                '|_| \\_|'
-            ],
-            'O': [
-                '  ____  ',
-                ' / __ \\ ',
-                '| |  | |',
-                '| |__| |',
-                ' \\____/ '
-            ],
-            'P': [
-                ' _____  ',
-                '|  __ \\ ',
-                '| |__) |',
-                '|  ___/ ',
-                '|_|     '
-            ],
-            'Q': [
-                '  ____  ',
-                ' / __ \\ ',
-                '| |  | |',
-                '| |__| |',
-                ' \\___\\_\\'
-            ],
-            'R': [
-                ' _____  ',
-                '|  __ \\ ',
-                '| |__) |',
-                '|  _  / ',
-                '|_| \\_\\ '
-            ],
-            'S': [
-                '  _____ ',
-                ' / ____|',
-                '| (___  ',
-                ' \\___ \\ ',
-                ' ____) |',
-                '|_____/ '
-            ],
-            'T': [
-                ' _______ ',
-                '|__   __|',
-                '   | |   ',
-                '   | |   ',
-                '   |_|   '
-            ],
-            'U': [
-                ' _    _ ',
-                '| |  | |',
-                '| |  | |',
-                '| |__| |',
-                ' \\____/ '
-            ],
-            'V': [
-                ' _    _ ',
-                '| |  | |',
-                '| |  | |',
-                ' \\  / / ',
-                '  \\/   '
-            ],
-            'W': [
-                ' _    _ ',
-                '| |  | |',
-                '| |  | |',
-                '| |/\\| |',
-                '|__/\\__|'
-            ],
-            'X': [
-                ' _   _ ',
-                ' \\ \\ / /',
-                '  \\ V / ',
-                '  /   \\ ',
-                ' /_/ \\_\\'
-            ],
-            'Y': [
-                ' _   _ ',
-                ' \\ \\ / /',
-                '  \\ V / ',
-                '   | |  ',
-                '   |_|  '
-            ],
-            'Z': [
-                ' ______',
-                '|___  /',
-                '   / / ',
-                '  / /  ',
-                ' /_____|'
-            ],
-            ' ': [
-                '   ',
-                '   ',
-                '   ',
-                '   ',
-                '   '
-            ],
-            '!': [
-                ' _ ',
-                '| |',
-                '| |',
-                '|_|',
-                '(_)'
-            ],
-            '?': [
-                ' ___ ',
-                '|__ \\',
-                '   ) |',
-                '  / / ',
-                ' |___|'
-            ],
-            ':': [
-                '   ',
-                ' _ ',
-                '(_)',
-                ' _ ',
-                '(_)'
-            ],
-            ')': [
-                ' _ ',
-                '| )',
-                ' | )',
-                ' | )',
-                '|_)'
-            ],
-            '(': [
-                ' _ ',
-                '( |',
-                '( |',
-                '( |',
-                '(_|'
-            ],
-            '0': [
-                '  ___  ',
-                ' / _ \\ ',
-                '| | | |',
-                '| |_| |',
-                ' \\___/ '
-            ],
-            '1': [
-                ' __ ',
-                '/_ |',
-                ' | |',
-                ' | |',
-                ' |_|'
-            ],
-            '2': [
-                ' ___  ',
-                '|__ \\ ',
-                '   ) |',
-                '  / / ',
-                ' |___|'
-            ],
-            '3': [
-                ' ____  ',
-                '|___ \\ ',
-                '  __) |',
-                ' / __/ ',
-                '|_____|'
-            ],
-            '4': [
-                ' _  _   ',
-                '| || |  ',
-                '| || |_ ',
-                '|__   _|',
-                '   |_|  '
-            ],
-            '5': [
-                ' _____ ',
-                '| ____|',
-                '| |__  ',
-                '|___ \\ ',
-                ' ___) |',
-                '|____/ '
-            ],
-            '6': [
-                '   __  ',
-                '  / /  ',
-                ' / /_  ',
-                '| \'_ \\ ',
-                '| (_) |',
-                ' \\___/ '
-            ],
-            '7': [
-                ' ______ ',
-                '|____  |',
-                '    / / ',
-                '   / /  ',
-                '  /_/   '
-            ],
-            '8': [
-                '  ___  ',
-                ' / _ \\ ',
-                '| (_) |',
-                ' > _ < ',
-                '| (_) |',
-                ' \\___/ '
-            ],
-            '9': [
-                '  ___  ',
-                ' / _ \\ ',
-                '| (_) |',
-                ' \\__, |',
-                '   / / ',
-                '  /_/  '
-            ]
-        },
-        'small': {
-            'A': [
-                ' /\\ ',
-                '/  \\',
-                '\\  /',
-                ' \\/ '
-            ],
-            'B': [
-                '|_  ',
-                '|_) ',
-                '|_) ',
-                '|__/'
-            ],
-            'C': [
-                ' __ ',
-                '|   ',
-                '|__ ',
-                '\\__|'
-            ],
-            'D': [
-                '|\\  ',
-                '| \\ ',
-                '| / ',
-                '|/__'
-            ],
-            'E': [
-                '|__ ',
-                '|_  ',
-                '|__ ',
-                '|___'
-            ],
-            'F': [
-                '|__ ',
-                '|_  ',
-                '|   ',
-                '|   '
-            ],
-            'G': [
-                ' __ ',
-                '| _ ',
-                '|__\\',
-                '\\__/'
-            ],
-            'H': [
-                '|  |',
-                '|__|',
-                '|  |',
-                '|  |'
-            ],
-            'I': [
-                '|',
-                '|',
-                '|',
-                '|'
-            ],
-            'J': [
-                '  |',
-                '  |',
-                '\\ |',
-                ' \\|'
-            ],
-            'K': [
-                '| /',
-                '|< ',
-                '| \\',
-                '|  \\'
-            ],
-            'L': [
-                '|   ',
-                '|   ',
-                '|__ ',
-                '|___'
-            ],
-            'M': [
-                '|\\/|',
-                '|  |',
-                '|  |',
-                '|  |'
-            ],
-            'N': [
-                '|\\|',
-                '| |',
-                '| |',
-                '|\\|'
-            ],
-            'O': [
-                ' __ ',
-                '|  |',
-                '|__|',
-                '\\__/'
-            ],
-            'P': [
-                '|_  ',
-                '|_) ',
-                '|   ',
-                '|   '
-            ],
-            'Q': [
-                ' __ ',
-                '|  |',
-                '|__|',
-                '\\__\\'
-            ],
-            'R': [
-                '|_  ',
-                '|_) ',
-                '| \\ ',
-                '|  \\'
-            ],
-            'S': [
-                ' __ ',
-                '|__ ',
-                ' __|',
-                '\\__|'
-            ],
-            'T': [
-                '___',
-                ' | ',
-                ' | ',
-                ' | '
-            ],
-            'U': [
-                '|  |',
-                '|  |',
-                '|__|',
-                '\\__/'
-            ],
-            'V': [
-                '|  |',
-                '|  |',
-                ' \\/ ',
-                '  V '
-            ],
-            'W': [
-                '|  |',
-                '|  |',
-                '|\\/|',
-                '|  |'
-            ],
-            'X': [
-                '\\ /',
-                ' X ',
-                '/ \\',
-                '\\ /'
-            ],
-            'Y': [
-                '\\ /',
-                ' V ',
-                ' | ',
-                ' | '
-            ],
-            'Z': [
-                '___',
-                ' / ',
-                '/  ',
-                '___'
-            ],
-            ' ': [
-                '  ',
-                '  ',
-                '  ',
-                '  '
-            ],
-            '!': [
-                '!',
-                '!',
-                ' ',
-                '.'
-            ],
-            '?': [
-                '?\\',
-                ' /',
-                ' ',
-                '.'
-            ],
-            ':': [
-                ' ',
-                '.',
-                ' ',
-                '.'
-            ],
-            ')': [
-                '\\',
-                ' )',
-                ' )',
-                '/'
-            ],
-            '(': [
-                ' /',
-                '( ',
-                '( ',
-                ' \\'
-            ]
-        },
-        'block': {
-            'A': ['▄▀█', '█▀█', '▀ █'],
-            'B': ['█▀▄', '█▀▄', '▀▀▀'],
-            'C': ['▄▀█', '█▄▄', '▀▀▀'],
-            'D': ['█▀▄', '█ █', '▀▀▀'],
-            'E': ['█▀▀', '█▀▀', '▀▀▀'],
-            'F': ['█▀▀', '█▀▀', '▀  '],
-            'G': ['▄▀█', '█▄█', '▀▀▀'],
-            'H': ['█ █', '█▀█', '▀ ▀'],
-            'I': ['█', '█', '▀'],
-            'J': [' █', ' █', '▀▀'],
-            'K': ['█▄▀', '█▀▄', '▀ ▀'],
-            'L': ['█  ', '█  ', '▀▀▀'],
-            'M': ['█▄█', '█▀█', '▀ ▀'],
-            'N': ['█▄█', '█▀█', '▀ ▀'],
-            'O': ['▄▀█', '█ █', '▀▀▀'],
-            'P': ['█▀▄', '█▀▀', '▀  '],
-            'Q': ['▄▀█', '█ █', '▀▀▀'],
-            'R': ['█▀▄', '█▀▄', '▀ ▀'],
-            'S': ['▄▀▀', '▀▀▄', '▀▀▀'],
-            'T': ['▀█▀', ' █ ', ' ▀ '],
-            'U': ['█ █', '█ █', '▀▀▀'],
-            'V': ['█ █', '█ █', ' ▀ '],
-            'W': ['█ █', '█▄█', '▀▀▀'],
-            'X': ['█ █', ' ▀ ', '▄ ▄'],
-            'Y': ['█ █', ' ▀ ', ' ▀ '],
-            'Z': ['▀▀▀', ' ▄▀', '▀▀▀'],
-            ' ': ['   ', '   ', '   '],
-            '!': ['█', '█', '▀'],
-            '?': ['▀▄', ' ▀', ' ▀'],
-            ':': [' ', '▀', ' ', '▀'],
-            ')': ['\\', ' )', '/'],
-            '(': ['/', '( ', '\\']
-        }
+// ASCII art generator function with classic style
+function generateAsciiArt(text) {
+    const font = {
+        'A': [
+            '     /\\     ',
+            '    /  \\    ',
+            '   / /\\ \\   ',
+            '  / ____ \\  ',
+            ' /_/    \\_\\ '
+        ],
+        'B': [
+            ' ______ ',
+            '|  __  \\',
+            '| |  | |',
+            '| |__| |',
+            '|______/'
+        ],
+        'C': [
+            '  _____ ',
+            ' / ____|',
+            '| |     ',
+            '| |____ ',
+            ' \\_____|'
+        ],
+        'D': [
+            ' _____  ',
+            '|  __ \\ ',
+            '| |  | |',
+            '| |__| |',
+            '|_____/ '
+        ],
+        'E': [
+            ' ______ ',
+            '|  ____|',
+            '| |__   ',
+            '|  __|  ',
+            '|______|'
+        ],
+        'F': [
+            ' ______ ',
+            '|  ____|',
+            '| |__   ',
+            '|  __|  ',
+            '|__|    '
+        ],
+        'G': [
+            '  _____ ',
+            ' / ____|',
+            '| |  __ ',
+            '| | |_ |',
+            ' \\_____|'
+        ],
+        'H': [
+            ' _    _ ',
+            '| |  | |',
+            '| |__| |',
+            '|  __  |',
+            '|_|  |_|'
+        ],
+        'I': [
+            ' _____ ',
+            '|_   _|',
+            '  | |  ',
+            '  | |  ',
+            ' |___| '
+        ],
+        'J': [
+            '      _ ',
+            '     | |',
+            '     | |',
+            ' _   | |',
+            '| |__| |',
+            ' \\____/ '
+        ],
+        'K': [
+            ' _  __ ',
+            '| |/ / ',
+            "| ' /  ",
+            '| . \\  ',
+            '|_|\\_\\ '
+        ],
+        'L': [
+            ' _      ',
+            '| |     ',
+            '| |     ',
+            '| |____ ',
+            '|______|'
+        ],
+        'M': [
+            ' __  __ ',
+            '|  \\/  |',
+            '| |\\/| |',
+            '| |  | |',
+            '|_|  |_|'
+        ],
+        'N': [
+            ' _   _ ',
+            '| \\ | |',
+            '|  \\| |',
+            '| |\\  |',
+            '|_| \\_|'
+        ],
+        'O': [
+            '  ____  ',
+            ' / __ \\ ',
+            '| |  | |',
+            '| |__| |',
+            ' \\____/ '
+        ],
+        'P': [
+            ' _____  ',
+            '|  __ \\ ',
+            '| |__) |',
+            '|  ___/ ',
+            '|_|     '
+        ],
+        'Q': [
+            '  ____  ',
+            ' / __ \\ ',
+            '| |  | |',
+            '| |__| |',
+            ' \\___\\_\\'
+        ],
+        'R': [
+            ' _____  ',
+            '|  __ \\ ',
+            '| |__) |',
+            '|  _  / ',
+            '|_| \\_\\ '
+        ],
+        'S': [
+            '  _____ ',
+            ' / ____|',
+            '| (___  ',
+            ' \\___ \\ ',
+            ' ____) |',
+            '|_____/ '
+        ],
+        'T': [
+            ' _______ ',
+            '|__   __|',
+            '   | |   ',
+            '   | |   ',
+            '   |_|   '
+        ],
+        'U': [
+            ' _    _ ',
+            '| |  | |',
+            '| |  | |',
+            '| |__| |',
+            ' \\____/ '
+        ],
+        'V': [
+            ' _    _ ',
+            '| |  | |',
+            '| |  | |',
+            ' \\  / / ',
+            '  \\/   '
+        ],
+        'W': [
+            ' _    _ ',
+            '| |  | |',
+            '| |  | |',
+            '| |/\\| |',
+            '|__/\\__|'
+        ],
+        'X': [
+            ' _   _ ',
+            ' \\ \\ / /',
+            '  \\ V / ',
+            '  /   \\ ',
+            ' /_/ \\_\\'
+        ],
+        'Y': [
+            ' _   _ ',
+            ' \\ \\ / /',
+            '  \\ V / ',
+            '   | |  ',
+            '   |_|  '
+        ],
+        'Z': [
+            ' ______',
+            '|___  /',
+            '   / / ',
+            '  / /  ',
+            ' /_____|'
+        ],
+        ' ': [
+            '   ',
+            '   ',
+            '   ',
+            '   ',
+            '   '
+        ],
+        '!': [
+            ' _ ',
+            '| |',
+            '| |',
+            '|_|',
+            '(_)'
+        ],
+        '?': [
+            ' ___ ',
+            '|__ \\',
+            '   ) |',
+            '  / / ',
+            ' |___|'
+        ],
+        ':': [
+            '   ',
+            ' _ ',
+            '(_)',
+            ' _ ',
+            '(_)'
+        ],
+        ')': [
+            ' _ ',
+            '| )',
+            ' | )',
+            ' | )',
+            '|_)'
+        ],
+        '(': [
+            ' _ ',
+            '( |',
+            '( |',
+            '( |',
+            '(_|'
+        ],
+        '0': [
+            '  ___  ',
+            ' / _ \\ ',
+            '| | | |',
+            '| |_| |',
+            ' \\___/ '
+        ],
+        '1': [
+            ' __ ',
+            '/_ |',
+            ' | |',
+            ' | |',
+            ' |_|'
+        ],
+        '2': [
+            ' ___  ',
+            '|__ \\ ',
+            '   ) |',
+            '  / / ',
+            ' |___|'
+        ],
+        '3': [
+            ' ____  ',
+            '|___ \\ ',
+            '  __) |',
+            ' / __/ ',
+            '|_____|'
+        ],
+        '4': [
+            ' _  _   ',
+            '| || |  ',
+            '| || |_ ',
+            '|__   _|',
+            '   |_|  '
+        ],
+        '5': [
+            ' _____ ',
+            '| ____|',
+            '| |__  ',
+            '|___ \\ ',
+            ' ___) |',
+            '|____/ '
+        ],
+        '6': [
+            '   __  ',
+            '  / /  ',
+            ' / /_  ',
+            '| \'_ \\ ',
+            '| (_) |',
+            ' \\___/ '
+        ],
+        '7': [
+            ' ______ ',
+            '|____  |',
+            '    / / ',
+            '   / /  ',
+            '  /_/   '
+        ],
+        '8': [
+            '  ___  ',
+            ' / _ \\ ',
+            '| (_) |',
+            ' > _ < ',
+            '| (_) |',
+            ' \\___/ '
+        ],
+        '9': [
+            '  ___  ',
+            ' / _ \\ ',
+            '| (_) |',
+            ' \\__, |',
+            '   / / ',
+            '  /_/  '
+        ]
     };
 
-    const selectedFont = fonts[fontStyle] || fonts['standard'];
-    const height = Object.values(selectedFont)[0].length;
+    const height = Object.values(font)[0].length;
     const lines = Array(height).fill('');
     
     for (let char of text.toUpperCase()) {
-        if (selectedFont[char]) {
+        if (font[char]) {
             for (let i = 0; i < height; i++) {
-                lines[i] += selectedFont[char][i] + ' ';
+                lines[i] += font[char][i] + ' ';
             }
         } else {
             // Unknown character, use space
-            const spaceChar = selectedFont[' '] || Array(height).fill('  ');
+            const spaceChar = font[' '] || Array(height).fill('  ');
             for (let i = 0; i < height; i++) {
                 lines[i] += spaceChar[i] + ' ';
             }
@@ -2269,237 +2012,6 @@ function generateAsciiArt(text, fontStyle = 'standard') {
     
     // Remove trailing spaces
     return lines.map(line => line.trimRight()).join('\n');
-}
-
-// Handle select menu interactions
-async function handleSelectMenu(interaction) {
-    const { customId, values } = interaction;
-    
-    try {
-        // Check authentication for protected select menus
-        const authCheck = await authSystem.requireAuthentication(interaction);
-        if (authCheck.required) {
-            return await interaction.reply(authCheck.response);
-        }
-        
-        switch (customId) {
-            case 'setup_main_menu':
-                await handleMainMenuSelection(interaction, values[0]);
-                break;
-            
-            case 'automod_toggle':
-                await handleAutoModToggle(interaction, values[0]);
-                break;
-            
-            case 'advanced_settings_toggle':
-                await handleAdvancedSettingsToggle(interaction, values[0]);
-                break;
-            
-            default:
-                await interaction.reply({ content: 'Unknown menu interaction!', ephemeral: true });
-        }
-    } catch (error) {
-        console.error('Select menu error:', error);
-        await interaction.reply({ content: 'There was an error processing your selection!', ephemeral: true });
-    }
-}
-
-async function handleMainMenuSelection(interaction, selection) {
-    const guildId = interaction.guild.id;
-    
-    switch (selection) {
-        case 'spam_protection':
-            const spamMenu = await setupSystem.createSpamProtectionMenu(guildId);
-            await interaction.update(spamMenu);
-            break;
-        
-        case 'raid_protection':
-            const raidMenu = await setupSystem.createRaidProtectionMenu(guildId);
-            await interaction.update(raidMenu);
-            break;
-        
-        case 'auto_moderation':
-            const autoModMenu = await setupSystem.createAutoModerationMenu(guildId);
-            await interaction.update(autoModMenu);
-            break;
-        
-        case 'anti_nuke':
-            const antiNukeMenu = await setupSystem.createAntiNukeMenu(guildId);
-            await interaction.update(antiNukeMenu);
-            break;
-        
-        case 'panic_button':
-            const panicMenu = await setupSystem.createPanicButtonMenu(guildId);
-            await interaction.update(panicMenu);
-            break;
-        
-        case 'view_config':
-            const configView = await setupSystem.createCurrentConfigView(guildId);
-            await interaction.update(configView);
-            break;
-        
-        case 'warning_system':
-            const warningMenu = await setupSystem.createWarningSystemMenu(guildId);
-            await interaction.update(warningMenu);
-            break;
-        
-        case 'advanced_settings':
-            const advancedMenu = await setupSystem.createAdvancedSettingsMenu(guildId);
-            await interaction.update(advancedMenu);
-            break;
-        
-        default:
-            await interaction.reply({ content: 'This feature is coming soon!', ephemeral: true });
-    }
-}
-
-async function handleAutoModToggle(interaction, feature) {
-    const guildId = interaction.guild.id;
-    const settings = await database.getModerationSettings(guildId);
-    
-    // Toggle the selected feature
-    const newValue = !settings[feature];
-    await database.updateModerationSettings(guildId, { [feature]: newValue });
-    
-    // Update the menu to reflect changes
-    const autoModMenu = await setupSystem.createAutoModerationMenu(guildId);
-    await interaction.update(autoModMenu);
-}
-
-// Handle button interactions
-async function handleButton(interaction) {
-    const { customId } = interaction;
-    
-    try {
-        // Authentication buttons don't require auth check
-        const authButtons = [
-            'auth_start_setup', 'auth_login', 'auth_verify_setup'
-        ];
-        
-        if (!authButtons.includes(customId)) {
-            // Check authentication for protected buttons
-            const authCheck = await authSystem.requireAuthentication(interaction);
-            if (authCheck.required) {
-                return await interaction.reply(authCheck.response);
-            }
-        }
-
-        switch (customId) {
-            // Authentication buttons
-            case 'auth_start_setup':
-                await handleAuthStartSetup(interaction);
-                break;
-            
-            case 'auth_login':
-                await handleAuthLogin(interaction);
-                break;
-            
-            case 'auth_verify_setup':
-                await handleAuthVerifySetup(interaction);
-                break;
-            
-            // Regular bot buttons (require authentication)
-            case 'setup_back':
-                const mainMenu = await setupSystem.createMainSetupMenu();
-                await interaction.update(mainMenu);
-                break;
-            
-            case 'spam_toggle':
-                await handleSpamToggle(interaction);
-                break;
-            
-            case 'raid_toggle':
-                await handleRaidToggle(interaction);
-                break;
-            
-            case 'panic_activate':
-                await handlePanicActivate(interaction);
-                break;
-            
-            case 'panic_deactivate':
-                await handlePanicDeactivate(interaction);
-                break;
-            
-            case 'panic_confirm':
-                await handlePanicConfirm(interaction);
-                break;
-            
-            case 'panic_cancel':
-                await interaction.update({ content: 'Panic mode cancelled.', embeds: [], components: [] });
-                break;
-            
-            case 'spam_configure':
-                await showSpamConfigModal(interaction);
-                break;
-            
-            case 'anti_nuke_toggle':
-                await handleAntiNukeToggle(interaction);
-                break;
-            
-            case 'anti_nuke_configure':
-                await showAntiNukeConfigModal(interaction);
-                break;
-            
-            case 'warning_system_toggle':
-                await handleWarningSystemToggle(interaction);
-                break;
-            
-            case 'warning_system_configure':
-                await showWarningConfigModal(interaction);
-                break;
-            
-            case 'raid_configure':
-                await showRaidConfigModal(interaction);
-                break;
-            
-            case 'automod_configure':
-                await showAutoModConfigModal(interaction);
-                break;
-            
-            case 'panic_configure_roles':
-                await showPanicRolesConfigModal(interaction);
-                break;
-            
-            case 'config_export':
-                await handleConfigExport(interaction);
-                break;
-            
-            case 'advanced_reset_confirm':
-                await handleAdvancedResetConfirm(interaction);
-                break;
-            
-            case 'advanced_reset_cancel':
-                await handleAdvancedResetCancel(interaction);
-                break;
-            
-            case 'advanced_reset':
-                await handleAdvancedReset(interaction);
-                break;
-            
-            // Ticket Panel Button
-            case 'create_ticket_panel':
-                await handleCreateTicketPanel(interaction);
-                break;
-            
-            default:
-                // Check for dynamic ticket buttons
-                if (customId.startsWith('ticket_close_')) {
-                    await handleTicketCloseButton(interaction);
-                } else if (customId.startsWith('ticket_claim_')) {
-                    await handleTicketClaimButton(interaction);
-                } else if (customId.startsWith('ticket_close_confirm_')) {
-                    await handleTicketCloseConfirm(interaction);
-                } else if (customId.startsWith('ticket_close_cancel_')) {
-                    await handleTicketCloseCancel(interaction);
-                } else {
-                    await interaction.reply({ content: 'Unknown button interaction!', ephemeral: true });
-                }
-                break;
-        }
-    } catch (error) {
-        console.error('Button error:', error);
-        await interaction.reply({ content: 'There was an error processing your request!', ephemeral: true });
-    }
 }
 
 // Ticket Button Handlers
