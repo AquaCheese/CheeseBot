@@ -11,7 +11,8 @@ const {
     PermissionFlagsBits,
     ModalBuilder,
     TextInputBuilder,
-    TextInputStyle
+    TextInputStyle,
+    AttachmentBuilder
 } = require('discord.js');
 const http = require('http');
 require('dotenv').config();
@@ -93,6 +94,11 @@ const commands = [
     new SlashCommandBuilder()
         .setName('login')
         .setDescription('Authenticate with the bot')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    
+    new SlashCommandBuilder()
+        .setName('qrcode')
+        .setDescription('Generate a new QR code for 2FA setup')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     
     new SlashCommandBuilder()
@@ -954,6 +960,10 @@ async function handleSlashCommand(interaction) {
                 await handleLoginCommand(interaction);
                 break;
             
+            case 'qrcode':
+                await handleQRCodeCommand(interaction);
+                break;
+            
             case 'logout':
                 await handleLogoutCommand(interaction);
                 break;
@@ -1234,6 +1244,59 @@ async function handleLogoutCommand(interaction) {
         .setColor(0x95A5A6);
     
     await interaction.reply({ embeds: [embed], ephemeral: true });
+}
+
+async function handleQRCodeCommand(interaction) {
+    try {
+        // Check if user is the registered primary admin
+        const isRegistered = await authSystem.isUserRegistered(interaction.user.id);
+        if (!isRegistered) {
+            const embed = new EmbedBuilder()
+                .setTitle('❌ Access Denied')
+                .setDescription('You are not the registered primary admin. Only the primary admin can generate QR codes.')
+                .setColor(0xE74C3C);
+            
+            await interaction.reply({ embeds: [embed], ephemeral: true });
+            return;
+        }
+
+        // Generate the QR code
+        const qrData = await authSystem.generateCurrentQRCode(interaction.user.id);
+        
+        // Create attachment from buffer
+        const attachment = new AttachmentBuilder(qrData.buffer, { name: 'qr-code.png' });
+        
+        const embed = new EmbedBuilder()
+            .setTitle('📱 New 2FA QR Code')
+            .setDescription('**Follow these steps to update your authenticator app:**\n\n' +
+                           '1. **Delete** the old "Guardian Security Bot" entry from your authenticator app\n' +
+                           '2. **Scan** the QR code below with your authenticator app (Authy, Google Authenticator, etc.)\n' +
+                           '3. **Test** by trying to log in with a new 6-digit code\n\n' +
+                           '⚠️ **Important:** This QR code contains your current authentication secret.')
+            .setColor(0x3498DB)
+            .setImage('attachment://qr-code.png')
+            .addFields(
+                { name: '🔐 Secret Key', value: `\`${qrData.secret}\``, inline: false },
+                { name: '📋 Manual Entry URL', value: `||${qrData.otpAuthUrl}||`, inline: false }
+            )
+            .setFooter({ text: 'Keep this information secure!' })
+            .setTimestamp();
+        
+        await interaction.reply({ 
+            embeds: [embed], 
+            files: [attachment], 
+            ephemeral: true 
+        });
+        
+    } catch (error) {
+        console.error('QR Code generation error:', error);
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ QR Code Generation Failed')
+            .setDescription(`Failed to generate QR code: ${error.message}`)
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
 }
 
 async function handleMsgCommand(interaction) {

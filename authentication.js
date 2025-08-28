@@ -595,6 +595,29 @@ class AuthenticationSystem {
         return { required: false, isPrimaryAdmin: true };
     }
 
+    async generateCurrentQRCode(userId) {
+        const user = await this.getUser(userId);
+        if (!user || !user.is_setup_complete) {
+            throw new Error('User not found or setup not complete');
+        }
+
+        const otpAuthUrl = `otpauth://totp/Guardian%20Security%20Bot:${user.username}?secret=${user.totp_secret}&issuer=Guardian%20Security%20Bot`;
+        
+        try {
+            const qrCodeDataUrl = await QRCode.toDataURL(otpAuthUrl);
+            const qrCodeBuffer = await QRCode.toBuffer(otpAuthUrl);
+            
+            return {
+                dataUrl: qrCodeDataUrl,
+                buffer: qrCodeBuffer,
+                secret: user.totp_secret,
+                otpAuthUrl: otpAuthUrl
+            };
+        } catch (error) {
+            throw new Error(`Failed to generate QR code: ${error.message}`);
+        }
+    }
+
     async logUnauthorizedAccess(interaction, reason, moderationSystem = null) {
         try {
             const user = interaction.user;
