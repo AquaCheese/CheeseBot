@@ -437,24 +437,26 @@ async function handleButton(interaction) {
         // Setup system buttons
         else if (customId === 'spam_toggle') {
             await handleSpamToggle(interaction);
-        } else if (customId === 'spam_config') {
+        } else if (customId === 'spam_configure') {
             await showSpamConfigModal(interaction);
         } else if (customId === 'raid_toggle') {
             await handleRaidToggle(interaction);
-        } else if (customId === 'raid_config') {
+        } else if (customId === 'raid_configure') {
             await showRaidConfigModal(interaction);
         } else if (customId === 'anti_nuke_toggle') {
             await handleAntiNukeToggle(interaction);
-        } else if (customId === 'anti_nuke_config') {
+        } else if (customId === 'anti_nuke_configure') {
             await showAntiNukeConfigModal(interaction);
         } else if (customId === 'warning_system_toggle') {
             await handleWarningSystemToggle(interaction);
-        } else if (customId === 'warning_config') {
+        } else if (customId === 'warning_configure') {
             await showWarningConfigModal(interaction);
-        } else if (customId === 'automod_config') {
+        } else if (customId === 'automod_configure') {
             await showAutoModConfigModal(interaction);
-        } else if (customId === 'panic_roles_config') {
+        } else if (customId === 'panic_roles_configure') {
             await showPanicRolesConfigModal(interaction);
+        } else if (customId === 'setup_back') {
+            await handleSetupBack(interaction);
         }
         
         // Panic mode buttons
@@ -502,8 +504,12 @@ async function handleSelectMenu(interaction) {
         const customId = interaction.customId;
         const selectedValue = interaction.values[0];
         
+        // Main setup menu
+        if (customId === 'setup_main_menu') {
+            await handleMainMenuSelection(interaction, selectedValue);
+        }
         // Setup system select menus
-        if (customId === 'setup_menu') {
+        else if (customId === 'setup_menu') {
             await setupSystem.handleSetupMenuSelection(interaction, selectedValue);
         } else if (customId === 'moderation_menu') {
             await setupSystem.handleModerationMenuSelection(interaction, selectedValue);
@@ -531,150 +537,115 @@ async function handleSelectMenu(interaction) {
     }
 }
 
-// Handle button interactions
-async function handleButton(interaction) {
-    try {
-        const customId = interaction.customId;
-
-        // Authentication buttons
-        if (customId === 'auth_start_setup') {
-            return await handleAuthStartSetup(interaction);
-        } else if (customId === 'auth_login') {
-            return await handleAuthLogin(interaction);
-        } else if (customId === 'auth_verify_setup') {
-            return await handleAuthVerifySetup(interaction);
-        }
-
-        // Panic buttons
-        else if (customId === 'panic_confirm') {
-            return await handlePanicConfirm(interaction);
-        } else if (customId === 'panic_cancel') {
-            return await handlePanicCancel(interaction);
-        }
-
-        // Setup/Config buttons
-        else if (customId === 'setup_back') {
-            return await handleSetupBack(interaction);
-        } else if (customId.startsWith('spam_')) {
-            return await handleSpamButton(interaction);
-        } else if (customId.startsWith('raid_')) {
-            return await handleRaidButton(interaction);
-        } else if (customId.startsWith('automod_')) {
-            return await handleAutomodButton(interaction);
-        } else if (customId.startsWith('panic_')) {
-            return await handlePanicButton(interaction);
-        } else if (customId.startsWith('anti_nuke_')) {
-            return await handleAntiNukeButton(interaction);
-        } else if (customId.startsWith('warning_system_')) {
-            return await handleWarningSystemButton(interaction);
-        } else if (customId === 'config_export') {
-            return await handleConfigExport(interaction);
-        }
-
-        // Ticket buttons
-        else if (customId.startsWith('ticket_close_confirm_')) {
-            return await handleTicketCloseConfirm(interaction);
-        } else if (customId.startsWith('ticket_close_cancel_')) {
-            return await handleTicketCloseCancel(interaction);
-        } else if (customId.startsWith('ticket_close_')) {
-            return await handleTicketCloseButton(interaction);
-        } else if (customId.startsWith('ticket_claim_')) {
-            return await handleTicketClaimButton(interaction);
-        }
-
-        // Advanced reset buttons
-        else if (customId === 'advanced_reset_confirm') {
-            return await handleAdvancedResetConfirm(interaction);
-        } else if (customId === 'advanced_reset_cancel') {
-            return await handleAdvancedResetCancel(interaction);
-        }
-
-        else {
-            console.log(`Unknown button interaction: ${customId}`);
-            await interaction.reply({ 
-                content: '❌ Unknown button interaction.', 
-                ephemeral: true 
-            });
-        }
-
-    } catch (error) {
-        console.error('Button interaction error:', error);
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ 
-                content: '❌ An error occurred while processing this button.', 
-                ephemeral: true 
-            });
-        }
-    }
-}
-
-// Authentication button handlers
-async function handleAuthStartSetup(interaction) {
-    try {
-        const { showPasswordSetupModal } = require('./authentication.js');
-        await showPasswordSetupModal(interaction);
-    } catch (error) {
-        console.error('Auth start setup error:', error);
-        await interaction.reply({ 
-            content: '❌ Failed to start authentication setup.', 
-            ephemeral: true 
-        });
-    }
-}
-
-async function handleAuthLogin(interaction) {
-    try {
-        const { showLoginModal } = require('./authentication.js');
-        await showLoginModal(interaction);
-    } catch (error) {
-        console.error('Auth login error:', error);
-        await interaction.reply({ 
-            content: '❌ Failed to show login modal.', 
-            ephemeral: true 
-        });
-    }
-}
-
-async function handleAuthVerifySetup(interaction) {
-    try {
-        const { showVerifySetupModal } = require('./authentication.js');
-        await showVerifySetupModal(interaction);
-    } catch (error) {
-        console.error('Auth verify setup error:', error);
-        await interaction.reply({ 
-            content: '❌ Failed to show verification modal.', 
-            ephemeral: true 
-        });
-    }
-}
-
 // Panic button handlers
 async function handlePanicConfirm(interaction) {
     try {
-        // Add panic confirm logic here
-        await interaction.reply({ 
-            content: '🆘 Panic mode activated!', 
-            ephemeral: true 
-        });
+        const result = await moderationSystem.activatePanicMode(interaction.guild, interaction.user);
+        
+        if (result.success) {
+            const embed = new EmbedBuilder()
+                .setTitle('🆘 PANIC MODE ACTIVATED')
+                .setDescription(`**EMERGENCY LOCKDOWN INITIATED**\n\n**Actions taken:**\n• All channels locked 🔒\n• ${result.kickedCount} members kicked 👢\n• Maximum security enabled 🛡️\n\nServer is now in emergency mode.`)
+                .setColor(0xFF4757)
+                .setTimestamp();
+            
+            await interaction.update({ embeds: [embed], components: [] });
+        } else {
+            await interaction.update({ content: `❌ Failed to activate panic mode: ${result.error}`, embeds: [], components: [] });
+        }
     } catch (error) {
         console.error('Panic confirm error:', error);
+        await interaction.reply({ 
+            content: '❌ Error activating panic mode!', 
+            flags: [4096] 
+        });
     }
 }
 
 async function handlePanicCancel(interaction) {
     try {
-        await interaction.reply({ 
-            content: '✅ Panic action cancelled.', 
-            ephemeral: true 
+        await interaction.update({ 
+            content: '✅ Panic action cancelled.',
+            embeds: [], 
+            components: [] 
         });
     } catch (error) {
         console.error('Panic cancel error:', error);
+        await interaction.reply({ 
+            content: '❌ Error cancelling panic mode!', 
+            flags: [4096] 
+        });
     }
 }
 
 // Placeholder handlers for setup buttons (these would need to be implemented)
+// Handle main setup menu selections
+async function handleMainMenuSelection(interaction, selectedValue) {
+    try {
+        switch (selectedValue) {
+            case 'spam_protection':
+                const spamMenu = await setupSystem.createSpamProtectionMenu(interaction.guild.id);
+                await interaction.update(spamMenu);
+                break;
+                
+            case 'raid_protection':
+                const raidMenu = await setupSystem.createRaidProtectionMenu(interaction.guild.id);
+                await interaction.update(raidMenu);
+                break;
+                
+            case 'auto_moderation':
+                const autoModMenu = await setupSystem.createAutoModerationMenu(interaction.guild.id);
+                await interaction.update(autoModMenu);
+                break;
+                
+            case 'anti_nuke':
+                const antiNukeMenu = await setupSystem.createAntiNukeMenu(interaction.guild.id);
+                await interaction.update(antiNukeMenu);
+                break;
+                
+            case 'warning_system':
+                const warningMenu = await setupSystem.createWarningSystemMenu(interaction.guild.id);
+                await interaction.update(warningMenu);
+                break;
+                
+            case 'view_config':
+                const configMenu = await setupSystem.createConfigViewMenu(interaction.guild.id);
+                await interaction.update(configMenu);
+                break;
+                
+            case 'panic_button':
+                const panicMenu = await setupSystem.createPanicButtonMenu(interaction.guild.id);
+                await interaction.update(panicMenu);
+                break;
+                
+            case 'advanced_settings':
+                const advancedMenu = await setupSystem.createAdvancedSettingsMenu(interaction.guild.id);
+                await interaction.update(advancedMenu);
+                break;
+                
+            default:
+                await interaction.reply({ 
+                    content: `Menu option "${selectedValue}" is not yet implemented.`, 
+                    flags: [4096] 
+                });
+        }
+    } catch (error) {
+        console.error('Main menu selection error:', error);
+        await interaction.reply({ 
+            content: 'There was an error processing your selection!', 
+            flags: [4096] 
+        });
+    }
+}
+
 async function handleSetupBack(interaction) {
-    await interaction.reply({ content: 'Going back...', ephemeral: true });
+    try {
+        const setupMenu = await setupSystem.createMainSetupMenu();
+        await interaction.update(setupMenu);
+    } catch (error) {
+        console.error('Setup back error:', error);
+        await interaction.reply({ content: 'Error returning to main menu!', flags: [4096] });
+    }
 }
 
 async function handleSpamButton(interaction) {
@@ -702,15 +673,147 @@ async function handleWarningSystemButton(interaction) {
 }
 
 async function handleConfigExport(interaction) {
-    await interaction.reply({ content: 'Config export clicked', ephemeral: true });
+    try {
+        const settings = await database.getModerationSettings(interaction.guild.id);
+        const config = await database.getServerConfig(interaction.guild.id);
+        
+        const exportData = {
+            server: {
+                id: interaction.guild.id,
+                name: interaction.guild.name,
+                exportDate: new Date().toISOString()
+            },
+            channels: {
+                admin_channel_id: config?.admin_channel_id || null,
+                logs_channel_id: config?.logs_channel_id || null
+            },
+            moderation: {
+                spam_protection: settings.spam_protection || false,
+                spam_message_count: settings.spam_message_count || 5,
+                spam_time_window: settings.spam_time_window || 5000,
+                spam_punishment: settings.spam_punishment || 'timeout',
+                spam_punishment_duration: settings.spam_punishment_duration || 300,
+                
+                raid_protection: settings.raid_protection || false,
+                raid_user_threshold: settings.raid_user_threshold || 10,
+                raid_time_window: settings.raid_time_window || 60,
+                raid_punishment: settings.raid_punishment || 'ban',
+                
+                anti_nuke: settings.anti_nuke || false,
+                channel_create_limit: settings.channel_create_limit || 3,
+                channel_delete_limit: settings.channel_delete_limit || 3,
+                role_create_limit: settings.role_create_limit || 5,
+                role_delete_limit: settings.role_delete_limit || 3,
+                member_kick_limit: settings.member_kick_limit || 5,
+                
+                warning_system: settings.warning_system || false,
+                warning_threshold: settings.warning_threshold || 3,
+                warning_auto_punishment: settings.warning_auto_punishment || 'timeout',
+                
+                auto_mod: settings.auto_mod || false,
+                caps_threshold: settings.caps_threshold || 70
+            },
+            security: {
+                safe_roles: config?.safe_roles ? JSON.parse(config.safe_roles) : []
+            }
+        };
+        
+        const configText = JSON.stringify(exportData, null, 2);
+        
+        const embed = new EmbedBuilder()
+            .setTitle('📄 Configuration Exported')
+            .setDescription('Your server configuration has been exported successfully!')
+            .setColor(0x2ECC71)
+            .setTimestamp();
+        
+        // Send as file attachment would be ideal, but for now send as code block
+        const truncatedConfig = configText.length > 1800 ? 
+            configText.substring(0, 1800) + '\n... (truncated)' : 
+            configText;
+        
+        await interaction.reply({ 
+            embeds: [embed], 
+            content: `\`\`\`json\n${truncatedConfig}\n\`\`\``,
+            flags: [4096] 
+        });
+        
+    } catch (error) {
+        console.error('Config export error:', error);
+        await interaction.reply({ 
+            content: '❌ Failed to export configuration!', 
+            flags: [4096] 
+        });
+    }
 }
 
 async function handleAdvancedResetConfirm(interaction) {
-    await interaction.reply({ content: 'Advanced reset confirmed', ephemeral: true });
+    try {
+        // Reset all moderation settings to defaults
+        await database.updateModerationSettings(interaction.guild.id, {
+            spam_protection: false,
+            spam_message_count: 5,
+            spam_time_window: 5000,
+            spam_punishment: 'timeout',
+            spam_punishment_duration: 300,
+            
+            raid_protection: false,
+            raid_user_threshold: 10,
+            raid_time_window: 60,
+            raid_punishment: 'ban',
+            
+            anti_nuke: false,
+            channel_create_limit: 3,
+            channel_delete_limit: 3,
+            role_create_limit: 5,
+            role_delete_limit: 3,
+            member_kick_limit: 5,
+            
+            warning_system: false,
+            warning_threshold: 3,
+            warning_auto_punishment: 'timeout',
+            
+            auto_mod: false,
+            caps_threshold: 70
+        });
+        
+        const embed = new EmbedBuilder()
+            .setTitle('✅ Configuration Reset Complete')
+            .setDescription('All settings have been reset to their default values.')
+            .setColor(0x2ECC71)
+            .setTimestamp();
+        
+        await interaction.update({ embeds: [embed], components: [] });
+        
+        // Show main menu after 3 seconds
+        setTimeout(async () => {
+            try {
+                const setupMenu = await setupSystem.createMainSetupMenu();
+                await interaction.editReply(setupMenu);
+            } catch (error) {
+                console.error('Error returning to main menu:', error);
+            }
+        }, 3000);
+        
+    } catch (error) {
+        console.error('Advanced reset confirm error:', error);
+        await interaction.reply({ 
+            content: '❌ Failed to reset configuration!', 
+            flags: [4096] 
+        });
+    }
 }
 
 async function handleAdvancedResetCancel(interaction) {
-    await interaction.reply({ content: 'Advanced reset cancelled', ephemeral: true });
+    try {
+        const advancedMenu = await setupSystem.createAdvancedSettingsMenu(interaction.guild.id);
+        await interaction.update(advancedMenu);
+    } catch (error) {
+        console.error('Advanced reset cancel error:', error);
+        await interaction.reply({ 
+            content: '❌ Error cancelling reset!', 
+            flags: [4096] 
+        });
+    }
 }
 
 async function handleSlashCommand(interaction) {
@@ -3065,7 +3168,48 @@ async function handleWarningConfigModal(interaction) {
     }
 }
 
-// Missing modal handlers - CRITICAL SECURITY FIXES
+// Missing authentication modal handlers - CRITICAL SECURITY FIXES
+async function handleAuthPasswordSetup(interaction) {
+    try {
+        await authSystem.handlePasswordSetup(interaction);
+    } catch (error) {
+        console.error('Auth password setup error:', error);
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ Setup Error')
+            .setDescription('Failed to set up authentication. Please try again.')
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [errorEmbed], flags: [4096] });
+    }
+}
+
+async function handleAuthLoginSubmit(interaction) {
+    try {
+        await authSystem.handleLoginSubmit(interaction);
+    } catch (error) {
+        console.error('Auth login submit error:', error);
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ Login Error')
+            .setDescription('Login failed. Please check your credentials and try again.')
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [errorEmbed], flags: [4096] });
+    }
+}
+
+async function handleAuthVerifySetupSubmit(interaction) {
+    try {
+        await authSystem.handleVerifySetupSubmit(interaction);
+    } catch (error) {
+        console.error('Auth verify setup submit error:', error);
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ Verification Error')
+            .setDescription('Setup verification failed. Please try again.')
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [errorEmbed], flags: [4096] });
+    }
+}
 async function handleRaidConfigModal(interaction) {
     try {
         const userThreshold = parseInt(interaction.fields.getTextInputValue('raid_user_threshold'));

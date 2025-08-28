@@ -608,6 +608,78 @@ class SetupSystem {
         };
     }
 
+    async createConfigViewMenu(guildId) {
+        const settings = await this.db.getModerationSettings(guildId);
+        const config = await this.db.getServerConfig(guildId);
+        
+        const embed = new EmbedBuilder()
+            .setTitle('📊 Current Configuration')
+            .setDescription('Overview of all security and moderation settings')
+            .setColor(0x3742FA)
+            .addFields(
+                { 
+                    name: '🚨 Spam Protection', 
+                    value: settings.spam_protection ? '✅ Enabled' : '❌ Disabled', 
+                    inline: true 
+                },
+                { 
+                    name: '🛡️ Raid Protection', 
+                    value: settings.raid_protection ? '✅ Enabled' : '❌ Disabled', 
+                    inline: true 
+                },
+                { 
+                    name: '🤖 Auto Moderation', 
+                    value: settings.auto_mod ? '✅ Enabled' : '❌ Disabled', 
+                    inline: true 
+                },
+                { 
+                    name: '💥 Anti-Nuke', 
+                    value: settings.anti_nuke ? '✅ Enabled' : '❌ Disabled', 
+                    inline: true 
+                },
+                { 
+                    name: '⚠️ Warning System', 
+                    value: settings.warning_system ? '✅ Enabled' : '❌ Disabled', 
+                    inline: true 
+                },
+                { 
+                    name: '🔒 Security Level', 
+                    value: this.getSecurityLevel(settings), 
+                    inline: true 
+                },
+                { 
+                    name: '📋 Admin Channel', 
+                    value: config?.admin_channel_id ? `<#${config.admin_channel_id}>` : 'Not set', 
+                    inline: true 
+                },
+                { 
+                    name: '📝 Logs Channel', 
+                    value: config?.logs_channel_id ? `<#${config.logs_channel_id}>` : 'Not set', 
+                    inline: true 
+                },
+                { 
+                    name: '🛡️ Safe Roles', 
+                    value: config?.safe_roles ? `${JSON.parse(config.safe_roles).length} roles` : 'None set', 
+                    inline: true 
+                }
+            )
+            .setTimestamp();
+
+        const buttons = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('config_export')
+                    .setLabel('📄 Export Config')
+                    .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
+                    .setCustomId('setup_back')
+                    .setLabel('Back to Main Menu')
+                    .setStyle(ButtonStyle.Secondary)
+            );
+
+        return { embeds: [embed], components: [buttons] };
+    }
+
     getSecurityLevel(settings) {
         let score = 0;
         if (settings.spam_protection) score++;
