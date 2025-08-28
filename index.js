@@ -4670,16 +4670,19 @@ async function handleCountingMessage(message, countingChannel) {
     try {
         const content = message.content.trim();
         
-        // Check if message is a number
-        const number = parseInt(content);
-        if (isNaN(number) || content !== number.toString()) {
-            // Not a number, delete the message
+        // Extract the first word/number from the message
+        const firstWord = content.split(/\s+/)[0];
+        const number = parseInt(firstWord);
+        
+        // Check if the first word is a valid number
+        if (isNaN(number) || firstWord !== number.toString()) {
+            // Not starting with a number, delete the message
             await message.delete();
             
             // Send ephemeral error message
             const errorEmbed = new EmbedBuilder()
                 .setTitle('❌ Invalid Count')
-                .setDescription('Only numbers are allowed in this counting channel!')
+                .setDescription('Messages must start with the next number in sequence!\nExample: `5 wow!` or just `5`')
                 .setColor(0xE74C3C);
             
             const errorMsg = await message.channel.send({ embeds: [errorEmbed] });
@@ -4784,13 +4787,13 @@ async function handleCountingMessage(message, countingChannel) {
             
             const resetEmbed = new EmbedBuilder()
                 .setTitle('💥 Count Reset!')
-                .setDescription(`Wrong number! Expected **${expectedNumber}** but got **${number}**.\n\nThe count has been reset to **0**.`)
+                .setDescription(`Wrong number! Expected **${expectedNumber}** but got **${number}**.\n\nThe count has been reset to **0**.\n\n💡 Remember: Start your message with the correct number!`)
                 .addFields(
                     { name: '📊 Previous High', value: `${countingChannel.current_number}`, inline: true },
                     { name: '💔 Reset by', value: `${message.author}`, inline: true }
                 )
                 .setColor(0xE74C3C)
-                .setFooter({ text: 'Better luck next time!' });
+                .setFooter({ text: 'Better luck next time! You can say "1 let\'s restart!"' });
             
             await message.reply({ embeds: [resetEmbed] });
             
@@ -4887,18 +4890,18 @@ async function handleCountChannelSet(interaction) {
         .setTitle('✅ Counting Channel Set')
         .setDescription(`${channel} is now a counting channel!`)
         .addFields(
-            { name: '📋 Rules', value: '• Count in order starting from 1\n• No two consecutive numbers by the same user\n• Only numbers are allowed\n• Wrong numbers reset the count', inline: false },
+            { name: '📋 Rules', value: '• Count in order starting from 1\n• No two consecutive numbers by the same user\n• Messages must start with the correct number\n• You can add text after the number (e.g., "5 wow!")\n• Wrong numbers reset the count', inline: false },
             { name: '🎯 Goal', value: 'Count as high as possible as a team!', inline: false }
         )
         .setColor(0x2ECC71)
-        .setFooter({ text: 'Type "1" to start counting!' });
+        .setFooter({ text: 'Type "1" or "1 let\'s go!" to start counting!' });
     
     await interaction.reply({ embeds: [embed] });
     
     // Send initial counting message
     const startEmbed = new EmbedBuilder()
         .setTitle('🔢 Counting Game Started!')
-        .setDescription('Let\'s start counting! Type **1** to begin.')
+        .setDescription('Let\'s start counting! Type **1** or **1 let\'s go!** to begin.\n\n💡 **Tip:** You can add comments after the number!')
         .setColor(0x3742FA);
     
     await channel.send({ embeds: [startEmbed] });
@@ -4950,7 +4953,7 @@ async function handleCountChannelReset(interaction) {
     
     const embed = new EmbedBuilder()
         .setTitle('🔄 Count Reset')
-        .setDescription('The count has been reset to **0**. Start counting from **1** again!')
+        .setDescription('The count has been reset to **0**. Start counting from **1** (or **1 here we go!**) again!')
         .addFields(
             { name: '📊 Previous High', value: `${existingChannel.current_number}`, inline: true },
             { name: '🎯 New Goal', value: 'Beat the previous record!', inline: true }
