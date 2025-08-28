@@ -3301,19 +3301,16 @@ async function handleAuthLoginSubmit(interaction) {
         const password = interaction.fields.getTextInputValue('password');
         const totpCode = interaction.fields.getTextInputValue('totp_code');
         
-        const result = await authSystem.authenticateUser(interaction.user.id, password, totpCode);
+        const session = await authSystem.authenticateUser(interaction.user.id, password, totpCode);
         
-        if (result.success) {
-            const embed = new EmbedBuilder()
-                .setTitle('✅ Authentication Successful')
-                .setDescription('You have been successfully authenticated and can now use protected commands.')
-                .setColor(0x2ECC71)
-                .setTimestamp();
-            
-            await interaction.reply({ embeds: [embed], flags: [4096] });
-        } else {
-            throw new Error(result.error || 'Authentication failed');
-        }
+        // If we get here, authentication was successful (no exception thrown)
+        const embed = new EmbedBuilder()
+            .setTitle('✅ Authentication Successful')
+            .setDescription('You have been successfully authenticated and can now use protected commands.')
+            .setColor(0x2ECC71)
+            .setTimestamp();
+        
+        await interaction.reply({ embeds: [embed], flags: [4096] });
         
     } catch (error) {
         console.error('Auth login submit error:', error);
