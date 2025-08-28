@@ -83,9 +83,9 @@ Your bot needs these permissions:
 - `/warnings <user>` - Check user warnings
 
 ### Public Commands (Available to Everyone)
-- `/ascii <text>` - Convert text to cool ASCII art with multiple styles (max 15 characters)
-  - Generates Big, Block, and Small style ASCII art
-  - Perfect for creating eye-catching text displays
+- `/ascii <text>` - Convert text to classic ASCII art using dots, slashes, and underscores (max 12 characters)
+  - Generates traditional ASCII art in Standard, Small, and Block styles
+  - Perfect for creating retro-style text displays and banners
 - `/suggest <suggestion>` - Submit a suggestion to server staff
 - `/report <type> <description> [user]` - Report issues or users to moderators
   - Types: User Behavior, Bug/Technical Issue, Content Issue, Other
