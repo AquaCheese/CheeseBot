@@ -413,6 +413,128 @@ client.on(Events.InteractionCreate, async interaction => {
 async function handleButton(interaction) {
     try {
         const customId = interaction.customId;
+        
+        // Authentication buttons
+        if (customId === 'auth_start_setup') {
+            await authenticationSystem.handleStartSetup(interaction);
+        } else if (customId === 'auth_login') {
+            await authenticationSystem.handleLogin(interaction);
+        } else if (customId === 'auth_verify_setup') {
+            await authenticationSystem.handleVerifySetup(interaction);
+        }
+        
+        // Ticket buttons
+        else if (customId.startsWith('ticket_close_confirm_')) {
+            await handleTicketCloseConfirm(interaction);
+        } else if (customId.startsWith('ticket_close_cancel_')) {
+            await handleTicketCloseCancel(interaction);
+        } else if (customId.startsWith('ticket_close_')) {
+            await handleTicketCloseButton(interaction);
+        } else if (customId.startsWith('ticket_claim_')) {
+            await handleTicketClaimButton(interaction);
+        }
+        
+        // Setup system buttons
+        else if (customId === 'spam_toggle') {
+            await handleSpamToggle(interaction);
+        } else if (customId === 'spam_config') {
+            await showSpamConfigModal(interaction);
+        } else if (customId === 'raid_toggle') {
+            await handleRaidToggle(interaction);
+        } else if (customId === 'raid_config') {
+            await showRaidConfigModal(interaction);
+        } else if (customId === 'anti_nuke_toggle') {
+            await handleAntiNukeToggle(interaction);
+        } else if (customId === 'anti_nuke_config') {
+            await showAntiNukeConfigModal(interaction);
+        } else if (customId === 'warning_system_toggle') {
+            await handleWarningSystemToggle(interaction);
+        } else if (customId === 'warning_config') {
+            await showWarningConfigModal(interaction);
+        } else if (customId === 'automod_config') {
+            await showAutoModConfigModal(interaction);
+        } else if (customId === 'panic_roles_config') {
+            await showPanicRolesConfigModal(interaction);
+        }
+        
+        // Panic mode buttons
+        else if (customId === 'panic_activate') {
+            await handlePanicActivate(interaction);
+        } else if (customId === 'panic_deactivate') {
+            await handlePanicDeactivate(interaction);
+        } else if (customId === 'panic_confirm') {
+            await handlePanicConfirm(interaction);
+        }
+        
+        // Advanced settings buttons
+        else if (customId.startsWith('advanced_toggle_')) {
+            const feature = customId.replace('advanced_toggle_', '');
+            await handleAdvancedSettingsToggle(interaction, feature);
+        } else if (customId === 'advanced_reset') {
+            await handleAdvancedReset(interaction);
+        } else if (customId === 'advanced_reset_confirm') {
+            await handleAdvancedResetConfirm(interaction);
+        } else if (customId === 'advanced_reset_cancel') {
+            await handleAdvancedResetCancel(interaction);
+        } else if (customId === 'config_export') {
+            await handleConfigExport(interaction);
+        }
+        
+        else {
+            console.log(`Unhandled button interaction: ${customId}`);
+            await interaction.reply({ content: 'This button is not yet implemented.', flags: [4096] }); // MessageFlags.Ephemeral
+        }
+    } catch (error) {
+        console.error('Button interaction error:', error);
+        const response = { content: 'There was an error processing this button interaction!', flags: [4096] }; // MessageFlags.Ephemeral
+        
+        if (interaction.replied || interaction.deferred) {
+            await interaction.followUp(response);
+        } else {
+            await interaction.reply(response);
+        }
+    }
+}
+
+// Handle select menu interactions
+async function handleSelectMenu(interaction) {
+    try {
+        const customId = interaction.customId;
+        const selectedValue = interaction.values[0];
+        
+        // Setup system select menus
+        if (customId === 'setup_menu') {
+            await setupSystem.handleSetupMenuSelection(interaction, selectedValue);
+        } else if (customId === 'moderation_menu') {
+            await setupSystem.handleModerationMenuSelection(interaction, selectedValue);
+        } else if (customId === 'advanced_menu') {
+            await setupSystem.handleAdvancedMenuSelection(interaction, selectedValue);
+        } else if (customId === 'logs_menu') {
+            await setupSystem.handleLogsMenuSelection(interaction, selectedValue);
+        } else if (customId === 'ticket_menu') {
+            await setupSystem.handleTicketMenuSelection(interaction, selectedValue);
+        }
+        
+        else {
+            console.log(`Unhandled select menu interaction: ${customId}`);
+            await interaction.reply({ content: 'This menu option is not yet implemented.', flags: [4096] }); // MessageFlags.Ephemeral
+        }
+    } catch (error) {
+        console.error('Select menu interaction error:', error);
+        const response = { content: 'There was an error processing this menu selection!', flags: [4096] }; // MessageFlags.Ephemeral
+        
+        if (interaction.replied || interaction.deferred) {
+            await interaction.followUp(response);
+        } else {
+            await interaction.reply(response);
+        }
+    }
+}
+
+// Handle button interactions
+async function handleButton(interaction) {
+    try {
+        const customId = interaction.customId;
 
         // Authentication buttons
         if (customId === 'auth_start_setup') {
