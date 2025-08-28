@@ -7,7 +7,7 @@ class SetupSystem {
 
     async createMainSetupMenu() {
         const embed = new EmbedBuilder()
-            .setTitle('🛡️ Guardian Security Bot - Setup Panel')
+            .setTitle('CheeseBot - Setup Panel')
             .setDescription('Configure your server\'s security and moderation settings')
             .setColor(0x2F3136)
             .addFields(
