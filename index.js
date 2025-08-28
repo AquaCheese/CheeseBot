@@ -442,7 +442,9 @@ async function handleButton(interaction) {
         }
         
         // Ticket buttons
-        else if (customId.startsWith('ticket_close_confirm_')) {
+        else if (customId === 'create_ticket_panel') {
+            await handleCreateTicketPanel(interaction);
+        } else if (customId.startsWith('ticket_close_confirm_')) {
             await handleTicketCloseConfirm(interaction);
         } else if (customId.startsWith('ticket_close_cancel_')) {
             await handleTicketCloseCancel(interaction);
