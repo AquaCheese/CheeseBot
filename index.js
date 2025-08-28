@@ -2396,6 +2396,120 @@ async function handleModal(interaction) {
     }
 }
 
+async function handleCreateTicketModal(interaction) {
+    try {
+        const subject = interaction.fields.getTextInputValue('ticket_subject');
+        const description = interaction.fields.getTextInputValue('ticket_description');
+        
+        console.log('Creating ticket:', { subject, description, userId: interaction.user.id });
+        
+        // Get ticket configuration
+        const config = await database.getTicketConfig(interaction.guild.id);
+        console.log('Ticket config:', config);
+        
+        // Create ticket channel
+        const ticketResult = await database.createTicket(
+            interaction.guild.id,
+            null, // Channel ID will be updated after creation
+            interaction.user.id,
+            interaction.user.username,
+            subject
+        );
+        
+        console.log('Ticket created in database:', ticketResult);
+        
+        const channelName = `supportticket-${ticketResult.ticketNumber}`;
+        
+        // Create private channel
+        const ticketChannel = await interaction.guild.channels.create({
+            name: channelName,
+            type: 0, // Text channel
+            parent: config?.ticket_category_id || null,
+            permissionOverwrites: [
+                {
+                    id: interaction.guild.roles.everyone,
+                    deny: [PermissionFlagsBits.ViewChannel]
+                },
+                {
+                    id: interaction.user.id,
+                    allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
+                },
+                {
+                    id: interaction.client.user.id,
+                    allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels]
+                }
+            ]
+        });
+        
+        console.log('Ticket channel created:', ticketChannel.id);
+        
+        // Add staff roles permissions if configured
+        if (config?.staff_role_id) {
+            await ticketChannel.permissionOverwrites.create(config.staff_role_id, {
+                ViewChannel: true,
+                SendMessages: true,
+                ReadMessageHistory: true,
+                ManageMessages: true
+            });
+        }
+        
+        // Update ticket with channel ID
+        await database.updateTicket(ticketResult.ticketId, { channel_id: ticketChannel.id });
+        
+        console.log('Ticket updated with channel ID');
+        
+        // Create ticket embed
+        const ticketEmbed = new EmbedBuilder()
+            .setTitle(`🎫 Support Ticket #${ticketResult.ticketNumber}`)
+            .setDescription(`**Subject:** ${subject}\n**Description:** ${description}`)
+            .addFields(
+                { name: '👤 Created by', value: `${interaction.user}`, inline: true },
+                { name: '📅 Created at', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
+                { name: '🏷️ Priority', value: 'Normal', inline: true }
+            )
+            .setColor(0x3742FA)
+            .setThumbnail(interaction.user.displayAvatarURL());
+        
+        const buttons = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`ticket_close_${ticketResult.ticketId}`)
+                    .setLabel('🔒 Close Ticket')
+                    .setStyle(ButtonStyle.Danger),
+                new ButtonBuilder()
+                    .setCustomId(`ticket_claim_${ticketResult.ticketId}`)
+                    .setLabel('👋 Claim Ticket')
+                    .setStyle(ButtonStyle.Success)
+            );
+        
+        await ticketChannel.send({ 
+            content: `${interaction.user} Your ticket has been created!${config?.staff_role_id ? ` <@&${config.staff_role_id}>` : ''}`,
+            embeds: [ticketEmbed], 
+            components: [buttons] 
+        });
+        
+        console.log('Ticket message sent to channel');
+        
+        // Reply to the user
+        const successEmbed = new EmbedBuilder()
+            .setTitle('✅ Ticket Created Successfully!')
+            .setDescription(`Your ticket has been created in ${ticketChannel}`)
+            .setColor(0x2ECC71);
+        
+        await interaction.reply({ embeds: [successEmbed], ephemeral: true });
+        
+        console.log('Success response sent to user');
+        
+    } catch (error) {
+        console.error('Create ticket modal error:', error);
+        console.error('Error stack:', error.stack);
+        await interaction.reply({ 
+            content: `Failed to create ticket: ${error.message}. Please try again or contact an administrator.`, 
+            ephemeral: true 
+        });
+    }
+}
+
 async function handleSpamConfigModal(interaction) {
     try {
         const messageCount = parseInt(interaction.fields.getTextInputValue('spam_message_count'));
