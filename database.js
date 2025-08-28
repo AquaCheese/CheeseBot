@@ -180,6 +180,7 @@ class Database {
                 thread_id TEXT,
                 ticket_number INTEGER,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 closed_at DATETIME,
                 close_reason TEXT
             )
@@ -208,6 +209,21 @@ class Database {
                 FOREIGN KEY (ticket_id) REFERENCES tickets (id)
             )
         `);
+
+        // Run migrations
+        this.runMigrations();
+    }
+
+    runMigrations() {
+        // Migration: Add updated_at column to tickets table if it doesn't exist
+        this.db.run(`
+            ALTER TABLE tickets ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        `, (err) => {
+            // Ignore error if column already exists
+            if (err && !err.message.includes('duplicate column name')) {
+                console.log('Migration note:', err.message);
+            }
+        });
     }
 
     // Server configuration methods

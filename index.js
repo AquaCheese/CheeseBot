@@ -2340,62 +2340,7 @@ async function showAntiNukeConfigModal(interaction) {
     await interaction.showModal(modal);
 }
 
-// Handle modal submissions
-async function handleModal(interaction) {
-    try {
-        switch (interaction.customId) {
-            case 'auth_password_setup':
-                await handleAuthPasswordSetup(interaction);
-                break;
-            
-            case 'auth_login_submit':
-                await handleAuthLoginSubmit(interaction);
-                break;
-            
-            case 'auth_verify_setup_submit':
-                await handleAuthVerifySetupSubmit(interaction);
-                break;
-            
-            case 'spam_config_modal':
-                await handleSpamConfigModal(interaction);
-                break;
-            
-            case 'anti_nuke_config_modal':
-                await handleAntiNukeConfigModal(interaction);
-                break;
-            
-            case 'warning_config_modal':
-                await handleWarningConfigModal(interaction);
-                break;
-            
-            case 'raid_config_modal':
-                await handleRaidConfigModal(interaction);
-                break;
-            
-            case 'automod_config_modal':
-                await handleAutoModConfigModal(interaction);
-                break;
-            
-            case 'panic_roles_config_modal':
-                await handlePanicRolesConfigModal(interaction);
-                break;
-            
-            case 'create_ticket_modal':
-                await handleCreateTicketModal(interaction);
-                break;
-        }
-    } catch (error) {
-        console.error('Modal error:', error);
-        const response = { content: 'There was an error processing your submission!', ephemeral: true };
-        
-        if (interaction.replied || interaction.deferred) {
-            await interaction.followUp(response);
-        } else {
-            await interaction.reply(response);
-        }
-    }
-}
-
+// Ticket modal handler (defined before handleModal to ensure availability)
 async function handleCreateTicketModal(interaction) {
     try {
         const subject = interaction.fields.getTextInputValue('ticket_subject');
@@ -2496,7 +2441,10 @@ async function handleCreateTicketModal(interaction) {
             .setDescription(`Your ticket has been created in ${ticketChannel}`)
             .setColor(0x2ECC71);
         
-        await interaction.reply({ embeds: [successEmbed], ephemeral: true });
+        await interaction.reply({ 
+            embeds: [successEmbed], 
+            flags: [4096] // MessageFlags.Ephemeral
+        });
         
         console.log('Success response sent to user');
         
@@ -2505,8 +2453,64 @@ async function handleCreateTicketModal(interaction) {
         console.error('Error stack:', error.stack);
         await interaction.reply({ 
             content: `Failed to create ticket: ${error.message}. Please try again or contact an administrator.`, 
-            ephemeral: true 
+            flags: [4096] // MessageFlags.Ephemeral
         });
+    }
+}
+
+// Handle modal submissions
+async function handleModal(interaction) {
+    try {
+        switch (interaction.customId) {
+            case 'auth_password_setup':
+                await handleAuthPasswordSetup(interaction);
+                break;
+            
+            case 'auth_login_submit':
+                await handleAuthLoginSubmit(interaction);
+                break;
+            
+            case 'auth_verify_setup_submit':
+                await handleAuthVerifySetupSubmit(interaction);
+                break;
+            
+            case 'spam_config_modal':
+                await handleSpamConfigModal(interaction);
+                break;
+            
+            case 'anti_nuke_config_modal':
+                await handleAntiNukeConfigModal(interaction);
+                break;
+            
+            case 'warning_config_modal':
+                await handleWarningConfigModal(interaction);
+                break;
+            
+            case 'raid_config_modal':
+                await handleRaidConfigModal(interaction);
+                break;
+            
+            case 'automod_config_modal':
+                await handleAutoModConfigModal(interaction);
+                break;
+            
+            case 'panic_roles_config_modal':
+                await handlePanicRolesConfigModal(interaction);
+                break;
+            
+            case 'create_ticket_modal':
+                await handleCreateTicketModal(interaction);
+                break;
+        }
+    } catch (error) {
+        console.error('Modal error:', error);
+        const response = { content: 'There was an error processing your submission!', ephemeral: true };
+        
+        if (interaction.replied || interaction.deferred) {
+            await interaction.followUp(response);
+        } else {
+            await interaction.reply(response);
+        }
     }
 }
 
