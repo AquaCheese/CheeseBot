@@ -409,6 +409,188 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 });
 
+// Handle button interactions
+async function handleButton(interaction) {
+    try {
+        const customId = interaction.customId;
+
+        // Authentication buttons
+        if (customId === 'auth_start_setup') {
+            return await handleAuthStartSetup(interaction);
+        } else if (customId === 'auth_login') {
+            return await handleAuthLogin(interaction);
+        } else if (customId === 'auth_verify_setup') {
+            return await handleAuthVerifySetup(interaction);
+        }
+
+        // Panic buttons
+        else if (customId === 'panic_confirm') {
+            return await handlePanicConfirm(interaction);
+        } else if (customId === 'panic_cancel') {
+            return await handlePanicCancel(interaction);
+        }
+
+        // Setup/Config buttons
+        else if (customId === 'setup_back') {
+            return await handleSetupBack(interaction);
+        } else if (customId.startsWith('spam_')) {
+            return await handleSpamButton(interaction);
+        } else if (customId.startsWith('raid_')) {
+            return await handleRaidButton(interaction);
+        } else if (customId.startsWith('automod_')) {
+            return await handleAutomodButton(interaction);
+        } else if (customId.startsWith('panic_')) {
+            return await handlePanicButton(interaction);
+        } else if (customId.startsWith('anti_nuke_')) {
+            return await handleAntiNukeButton(interaction);
+        } else if (customId.startsWith('warning_system_')) {
+            return await handleWarningSystemButton(interaction);
+        } else if (customId === 'config_export') {
+            return await handleConfigExport(interaction);
+        }
+
+        // Ticket buttons
+        else if (customId.startsWith('ticket_close_confirm_')) {
+            return await handleTicketCloseConfirm(interaction);
+        } else if (customId.startsWith('ticket_close_cancel_')) {
+            return await handleTicketCloseCancel(interaction);
+        } else if (customId.startsWith('ticket_close_')) {
+            return await handleTicketCloseButton(interaction);
+        } else if (customId.startsWith('ticket_claim_')) {
+            return await handleTicketClaimButton(interaction);
+        }
+
+        // Advanced reset buttons
+        else if (customId === 'advanced_reset_confirm') {
+            return await handleAdvancedResetConfirm(interaction);
+        } else if (customId === 'advanced_reset_cancel') {
+            return await handleAdvancedResetCancel(interaction);
+        }
+
+        else {
+            console.log(`Unknown button interaction: ${customId}`);
+            await interaction.reply({ 
+                content: '❌ Unknown button interaction.', 
+                ephemeral: true 
+            });
+        }
+
+    } catch (error) {
+        console.error('Button interaction error:', error);
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ 
+                content: '❌ An error occurred while processing this button.', 
+                ephemeral: true 
+            });
+        }
+    }
+}
+
+// Authentication button handlers
+async function handleAuthStartSetup(interaction) {
+    try {
+        const { showPasswordSetupModal } = require('./authentication.js');
+        await showPasswordSetupModal(interaction);
+    } catch (error) {
+        console.error('Auth start setup error:', error);
+        await interaction.reply({ 
+            content: '❌ Failed to start authentication setup.', 
+            ephemeral: true 
+        });
+    }
+}
+
+async function handleAuthLogin(interaction) {
+    try {
+        const { showLoginModal } = require('./authentication.js');
+        await showLoginModal(interaction);
+    } catch (error) {
+        console.error('Auth login error:', error);
+        await interaction.reply({ 
+            content: '❌ Failed to show login modal.', 
+            ephemeral: true 
+        });
+    }
+}
+
+async function handleAuthVerifySetup(interaction) {
+    try {
+        const { showVerifySetupModal } = require('./authentication.js');
+        await showVerifySetupModal(interaction);
+    } catch (error) {
+        console.error('Auth verify setup error:', error);
+        await interaction.reply({ 
+            content: '❌ Failed to show verification modal.', 
+            ephemeral: true 
+        });
+    }
+}
+
+// Panic button handlers
+async function handlePanicConfirm(interaction) {
+    try {
+        // Add panic confirm logic here
+        await interaction.reply({ 
+            content: '🆘 Panic mode activated!', 
+            ephemeral: true 
+        });
+    } catch (error) {
+        console.error('Panic confirm error:', error);
+    }
+}
+
+async function handlePanicCancel(interaction) {
+    try {
+        await interaction.reply({ 
+            content: '✅ Panic action cancelled.', 
+            ephemeral: true 
+        });
+    } catch (error) {
+        console.error('Panic cancel error:', error);
+    }
+}
+
+// Placeholder handlers for setup buttons (these would need to be implemented)
+async function handleSetupBack(interaction) {
+    await interaction.reply({ content: 'Going back...', ephemeral: true });
+}
+
+async function handleSpamButton(interaction) {
+    await interaction.reply({ content: 'Spam button clicked', ephemeral: true });
+}
+
+async function handleRaidButton(interaction) {
+    await interaction.reply({ content: 'Raid button clicked', ephemeral: true });
+}
+
+async function handleAutomodButton(interaction) {
+    await interaction.reply({ content: 'Automod button clicked', ephemeral: true });
+}
+
+async function handlePanicButton(interaction) {
+    await interaction.reply({ content: 'Panic button clicked', ephemeral: true });
+}
+
+async function handleAntiNukeButton(interaction) {
+    await interaction.reply({ content: 'Anti-nuke button clicked', ephemeral: true });
+}
+
+async function handleWarningSystemButton(interaction) {
+    await interaction.reply({ content: 'Warning system button clicked', ephemeral: true });
+}
+
+async function handleConfigExport(interaction) {
+    await interaction.reply({ content: 'Config export clicked', ephemeral: true });
+}
+
+async function handleAdvancedResetConfirm(interaction) {
+    await interaction.reply({ content: 'Advanced reset confirmed', ephemeral: true });
+}
+
+async function handleAdvancedResetCancel(interaction) {
+    await interaction.reply({ content: 'Advanced reset cancelled', ephemeral: true });
+}
+
 async function handleSlashCommand(interaction) {
     const { commandName } = interaction;
 
