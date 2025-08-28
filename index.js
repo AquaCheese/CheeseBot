@@ -416,11 +416,29 @@ async function handleButton(interaction) {
         
         // Authentication buttons
         if (customId === 'auth_start_setup') {
-            await authSystem.handleStartSetup(interaction);
+            try {
+                const modal = await authSystem.createPasswordSetupModal();
+                await interaction.showModal(modal);
+            } catch (error) {
+                console.error('Auth start setup error:', error);
+                await interaction.reply({ content: '❌ Failed to start authentication setup.', flags: [4096] });
+            }
         } else if (customId === 'auth_login') {
-            await authSystem.handleLogin(interaction);
+            try {
+                const modal = await authSystem.createLoginModal();
+                await interaction.showModal(modal);
+            } catch (error) {
+                console.error('Auth login error:', error);
+                await interaction.reply({ content: '❌ Failed to show login modal.', flags: [4096] });
+            }
         } else if (customId === 'auth_verify_setup') {
-            await authSystem.handleVerifySetup(interaction);
+            try {
+                const modal = await authSystem.createVerifySetupModal();
+                await interaction.showModal(modal);
+            } catch (error) {
+                console.error('Auth verify setup error:', error);
+                await interaction.reply({ content: '❌ Failed to show verification modal.', flags: [4096] });
+            }
         }
         
         // Ticket buttons
@@ -3171,12 +3189,27 @@ async function handleWarningConfigModal(interaction) {
 // Missing authentication modal handlers - CRITICAL SECURITY FIXES
 async function handleAuthPasswordSetup(interaction) {
     try {
-        await authSystem.handlePasswordSetup(interaction);
+        const password = interaction.fields.getTextInputValue('password');
+        const confirmPassword = interaction.fields.getTextInputValue('confirm_password');
+        
+        const result = await authSystem.setupPassword(
+            interaction.user.id, 
+            interaction.user.username, 
+            password, 
+            confirmPassword
+        );
+        
+        // Generate QR code
+        const qrBuffer = await authSystem.generateQRCode(result.qrCode);
+        const qrSetup = await authSystem.createQRSetupEmbed(result.secret, qrBuffer, result.backupCodes);
+        
+        await interaction.reply({ ...qrSetup, flags: [4096] });
+        
     } catch (error) {
         console.error('Auth password setup error:', error);
         const errorEmbed = new EmbedBuilder()
             .setTitle('❌ Setup Error')
-            .setDescription('Failed to set up authentication. Please try again.')
+            .setDescription(`Failed to set up authentication: ${error.message}`)
             .setColor(0xE74C3C);
         
         await interaction.reply({ embeds: [errorEmbed], flags: [4096] });
@@ -3185,12 +3218,28 @@ async function handleAuthPasswordSetup(interaction) {
 
 async function handleAuthLoginSubmit(interaction) {
     try {
-        await authSystem.handleLoginSubmit(interaction);
+        const password = interaction.fields.getTextInputValue('password');
+        const totpCode = interaction.fields.getTextInputValue('totp_code');
+        
+        const result = await authSystem.authenticateUser(interaction.user.id, password, totpCode);
+        
+        if (result.success) {
+            const embed = new EmbedBuilder()
+                .setTitle('✅ Authentication Successful')
+                .setDescription('You have been successfully authenticated and can now use protected commands.')
+                .setColor(0x2ECC71)
+                .setTimestamp();
+            
+            await interaction.reply({ embeds: [embed], flags: [4096] });
+        } else {
+            throw new Error(result.error || 'Authentication failed');
+        }
+        
     } catch (error) {
         console.error('Auth login submit error:', error);
         const errorEmbed = new EmbedBuilder()
             .setTitle('❌ Login Error')
-            .setDescription('Login failed. Please check your credentials and try again.')
+            .setDescription(`Login failed: ${error.message}`)
             .setColor(0xE74C3C);
         
         await interaction.reply({ embeds: [errorEmbed], flags: [4096] });
@@ -3199,12 +3248,23 @@ async function handleAuthLoginSubmit(interaction) {
 
 async function handleAuthVerifySetupSubmit(interaction) {
     try {
-        await authSystem.handleVerifySetupSubmit(interaction);
+        const totpCode = interaction.fields.getTextInputValue('totp_code');
+        
+        await authSystem.completeSetup(interaction.user.id, totpCode);
+        
+        const embed = new EmbedBuilder()
+            .setTitle('✅ Setup Complete')
+            .setDescription('Your authentication has been set up successfully! You can now use `/login` to authenticate.')
+            .setColor(0x2ECC71)
+            .setTimestamp();
+        
+        await interaction.reply({ embeds: [embed], flags: [4096] });
+        
     } catch (error) {
         console.error('Auth verify setup submit error:', error);
         const errorEmbed = new EmbedBuilder()
             .setTitle('❌ Verification Error')
-            .setDescription('Setup verification failed. Please try again.')
+            .setDescription(`Setup verification failed: ${error.message}`)
             .setColor(0xE74C3C);
         
         await interaction.reply({ embeds: [errorEmbed], flags: [4096] });
@@ -3304,12 +3364,19 @@ async function handlePanicRolesConfigModal(interaction) {
         
         // Validate role IDs
         for (const roleId of roleIds) {
-            if (!/^\d+$/.test(roleId)) {
-                throw new Error(`Invalid role ID: ${roleId}. Must be numeric.`);
+            if (!/^\d{17,19}$/.test(roleId)) {
+                throw new Error(`Invalid role ID: ${roleId}. Role IDs must be 17-19 digit numbers.`);
+            }
+            
+            // Check if role exists in guild
+            const role = interaction.guild.roles.cache.get(roleId);
+            if (!role) {
+                throw new Error(`Role with ID ${roleId} not found in this server.`);
             }
         }
         
         console.log(`🛡️ Updating panic mode safe roles:`, {
+            roleCount: roleIds.length,
             roleIds
         });
         
@@ -3317,12 +3384,23 @@ async function handlePanicRolesConfigModal(interaction) {
         const currentConfig = await database.getServerConfig(interaction.guild.id) || {};
         await database.setServerConfig(interaction.guild.id, {
             ...currentConfig,
-            safeRoles: roleIds
+            safe_roles: JSON.stringify(roleIds)
         });
         
-        // Return to the panic button menu to show updated settings
-        const panicMenu = await setupSystem.createPanicButtonMenu(interaction.guild.id);
-        await interaction.update(panicMenu);
+        const embed = new EmbedBuilder()
+            .setTitle('✅ Safe Roles Updated')
+            .setDescription(`Updated safe roles for panic mode. ${roleIds.length} role(s) configured.`)
+            .setColor(0x2ECC71);
+        
+        if (roleIds.length > 0) {
+            const roleNames = roleIds.map(id => {
+                const role = interaction.guild.roles.cache.get(id);
+                return role ? role.name : `Unknown (${id})`;
+            });
+            embed.addFields({ name: 'Safe Roles', value: roleNames.join('\n'), inline: false });
+        }
+        
+        await interaction.update({ embeds: [embed], components: [] });
         
         console.log(`✅ Panic mode safe roles updated successfully for guild ${interaction.guild.id}`);
         
@@ -3331,10 +3409,10 @@ async function handlePanicRolesConfigModal(interaction) {
         
         const errorEmbed = new EmbedBuilder()
             .setTitle('❌ Configuration Error')
-            .setDescription(`Failed to update panic roles settings: ${error.message}`)
+            .setDescription(`Failed to update safe roles: ${error.message}`)
             .setColor(0xE74C3C);
         
-        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+        await interaction.reply({ embeds: [errorEmbed], flags: [4096] });
     }
 }
 
