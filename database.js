@@ -336,6 +336,53 @@ class Database {
             )
         `);
 
+        // Server setup history for easy redeployment
+        this.db.run(`
+            CREATE TABLE IF NOT EXISTS server_setup_history (
+                guild_id TEXT PRIMARY KEY,
+                guild_name TEXT,
+                setup_by_user_id TEXT,
+                setup_by_username TEXT,
+                setup_by_display_name TEXT,
+                admin_channel_id TEXT,
+                logs_channel_id TEXT,
+                password_hash TEXT,
+                totp_secret TEXT,
+                backup_codes TEXT,
+                authorized_users TEXT DEFAULT '[]',
+                configuration_backup TEXT,
+                first_setup_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                last_access_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                setup_version TEXT DEFAULT '1.0.0',
+                is_active BOOLEAN DEFAULT 1,
+                access_count INTEGER DEFAULT 1
+            )
+        `);
+
+        // Server setup history table (for persistent configurations)
+        this.db.run(`
+            CREATE TABLE IF NOT EXISTS server_setup_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT,
+                guild_name TEXT,
+                setup_by_user_id TEXT,
+                setup_by_username TEXT,
+                admin_password_hash TEXT,
+                admin_channel_id TEXT,
+                logs_channel_id TEXT,
+                configuration_data TEXT,
+                auth_users_backup TEXT,
+                authorized_users_backup TEXT,
+                moderation_settings_backup TEXT,
+                first_setup_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                last_restored_at DATETIME,
+                setup_version TEXT DEFAULT '1.0.0',
+                is_active BOOLEAN DEFAULT 1,
+                restore_count INTEGER DEFAULT 0,
+                notes TEXT
+            )
+        `);
+
         // Run migrations
         this.runMigrations();
     }
@@ -377,6 +424,244 @@ class Database {
                 function(err) {
                     if (err) reject(err);
                     else resolve(this.lastID);
+                }
+            );
+        });
+    }
+
+    // Server setup history methods for easy redeployment
+    async getServerSetupHistory(guildId) {
+        return new Promise((resolve, reject) => {
+            this.db.get(
+                'SELECT * FROM server_setup_history WHERE guild_id = ? AND is_active = 1 ORDER BY last_restored_at DESC, first_setup_at DESC LIMIT 1',
+                [guildId],
+                (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                }
+            );
+        });
+    }
+
+    async saveServerSetupHistory(guildId, setupData) {
+        return new Promise((resolve, reject) => {
+            const {
+                guildName,
+                setupByUserId,
+                setupByUsername,
+                adminPasswordHash,
+                adminChannelId,
+                logsChannelId,
+                notes = ''
+            } = setupData;
+
+            // Get current configurations to backup
+            const configData = this.getServerConfig(guildId);
+            const authUsers = this.db.all('SELECT * FROM auth_users');
+            const authorizedUsers = this.db.all('SELECT * FROM authorized_users');
+            const moderationSettings = this.getModerationSettings(guildId);
+
+            this.db.run(
+                `INSERT OR REPLACE INTO server_setup_history 
+                 (guild_id, guild_name, setup_by_user_id, setup_by_username, admin_password_hash, 
+                  admin_channel_id, logs_channel_id, configuration_data, auth_users_backup, 
+                  authorized_users_backup, moderation_settings_backup, notes, last_restored_at) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+                [
+                    guildId, 
+                    guildName, 
+                    setupByUserId, 
+                    setupByUsername, 
+                    adminPasswordHash,
+                    adminChannelId,
+                    logsChannelId,
+                    JSON.stringify(configData),
+                    JSON.stringify(authUsers),
+                    JSON.stringify(authorizedUsers),
+                    JSON.stringify(moderationSettings),
+                    notes
+                ],
+                function(err) {
+                    if (err) reject(err);
+                    else resolve(this.lastID);
+                }
+            );
+        });
+    }
+
+    async restoreServerConfiguration(guildId, historyId) {
+        return new Promise((resolve, reject) => {
+            this.db.get(
+                'SELECT * FROM server_setup_history WHERE id = ? AND guild_id = ?',
+                [historyId, guildId],
+                async (err, setupHistory) => {
+                    if (err) {
+                        reject(err);
+                        return;
+                    }
+                    
+                    if (!setupHistory) {
+                        reject(new Error('Setup history not found'));
+                        return;
+                    }
+
+                    try {
+                        // Restore server configuration
+                        if (setupHistory.configuration_data) {
+                            const configData = JSON.parse(setupHistory.configuration_data);
+                            await this.setServerConfig(guildId, {
+                                adminChannelId: setupHistory.admin_channel_id,
+                                logsChannelId: setupHistory.logs_channel_id,
+                                safeRoles: configData.safe_roles || []
+                            });
+                        }
+
+                        // Restore auth users
+                        if (setupHistory.auth_users_backup) {
+                            const authUsers = JSON.parse(setupHistory.auth_users_backup);
+                            for (const user of authUsers) {
+                                this.db.run(
+                                    `INSERT OR REPLACE INTO auth_users 
+                                     (user_id, username, password_hash, totp_secret, backup_codes, is_setup_complete) 
+                                     VALUES (?, ?, ?, ?, ?, ?)`,
+                                    [user.user_id, user.username, user.password_hash, user.totp_secret, user.backup_codes, user.is_setup_complete]
+                                );
+                            }
+                        }
+
+                        // Restore authorized users
+                        if (setupHistory.authorized_users_backup) {
+                            const authorizedUsers = JSON.parse(setupHistory.authorized_users_backup);
+                            for (const user of authorizedUsers) {
+                                this.db.run(
+                                    `INSERT OR REPLACE INTO authorized_users 
+                                     (user_id, username, granted_by, is_active, permissions) 
+                                     VALUES (?, ?, ?, ?, ?)`,
+                                    [user.user_id, user.username, user.granted_by, user.is_active, user.permissions]
+                                );
+                            }
+                        }
+
+                        // Update restore count
+                        this.db.run(
+                            'UPDATE server_setup_history SET restore_count = restore_count + 1, last_restored_at = CURRENT_TIMESTAMP WHERE id = ?',
+                            [historyId]
+                        );
+
+                        resolve(setupHistory);
+                    } catch (restoreError) {
+                        reject(restoreError);
+                    }
+                }
+            );
+        });
+    }
+
+    async markServerSetupHistoryInactive(guildId) {
+        return new Promise((resolve, reject) => {
+            this.db.run(
+                'UPDATE server_setup_history SET is_active = 0 WHERE guild_id = ?',
+                [guildId],
+                function(err) {
+                    if (err) reject(err);
+                    else resolve(this.changes);
+                }
+            );
+        });
+    }
+
+    // Server setup history methods for easy redeployment
+    async getServerSetupHistory(guildId) {
+        return new Promise((resolve, reject) => {
+            this.db.get(
+                'SELECT * FROM server_setup_history WHERE guild_id = ? AND is_active = 1',
+                [guildId],
+                (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                }
+            );
+        });
+    }
+
+    async saveServerSetupHistory(guildId, setupData) {
+        return new Promise((resolve, reject) => {
+            const {
+                guildName,
+                setupByUserId,
+                setupByUsername,
+                setupByDisplayName,
+                adminChannelId,
+                logsChannelId,
+                passwordHash,
+                totpSecret,
+                backupCodes,
+                authorizedUsers,
+                configurationBackup,
+                setupVersion
+            } = setupData;
+
+            this.db.run(
+                `INSERT OR REPLACE INTO server_setup_history 
+                 (guild_id, guild_name, setup_by_user_id, setup_by_username, setup_by_display_name,
+                  admin_channel_id, logs_channel_id, password_hash, totp_secret, backup_codes,
+                  authorized_users, configuration_backup, setup_version, last_access_at, access_count) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 
+                         COALESCE((SELECT access_count FROM server_setup_history WHERE guild_id = ?), 0) + 1)`,
+                [guildId, guildName, setupByUserId, setupByUsername, setupByDisplayName,
+                 adminChannelId, logsChannelId, passwordHash, totpSecret, 
+                 JSON.stringify(backupCodes || []), JSON.stringify(authorizedUsers || []),
+                 JSON.stringify(configurationBackup || {}), setupVersion || '1.0.0', guildId],
+                function(err) {
+                    if (err) reject(err);
+                    else resolve(this.lastID);
+                }
+            );
+        });
+    }
+
+    async updateServerAccess(guildId) {
+        return new Promise((resolve, reject) => {
+            this.db.run(
+                `UPDATE server_setup_history 
+                 SET last_access_at = CURRENT_TIMESTAMP, access_count = access_count + 1
+                 WHERE guild_id = ?`,
+                [guildId],
+                function(err) {
+                    if (err) reject(err);
+                    else resolve(this.changes);
+                }
+            );
+        });
+    }
+
+    async resetServerSetup(guildId) {
+        return new Promise((resolve, reject) => {
+            this.db.run(
+                'UPDATE server_setup_history SET is_active = 0 WHERE guild_id = ?',
+                [guildId],
+                function(err) {
+                    if (err) reject(err);
+                    else resolve(this.changes);
+                }
+            );
+        });
+    }
+
+    async getServerSetupStats(guildId) {
+        return new Promise((resolve, reject) => {
+            this.db.get(
+                `SELECT 
+                    COUNT(*) as total_setups,
+                    MAX(access_count) as max_access_count,
+                    MAX(last_access_at) as last_access,
+                    MIN(first_setup_at) as first_setup
+                 FROM server_setup_history 
+                 WHERE guild_id = ?`,
+                [guildId],
+                (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row || {});
                 }
             );
         });

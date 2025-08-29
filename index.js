@@ -917,6 +917,27 @@ async function handleButton(interaction) {
             await handleConfigExport(interaction);
         }
         
+        // Server restoration buttons
+        else if (customId.startsWith('restore_config_')) {
+            const historyId = customId.replace('restore_config_', '');
+            await handleRestoreConfig(interaction, historyId);
+        } else if (customId.startsWith('reset_config_')) {
+            const guildId = customId.replace('reset_config_', '');
+            await handleResetConfig(interaction, guildId);
+        } else if (customId.startsWith('view_setup_details_')) {
+            const historyId = customId.replace('view_setup_details_', '');
+            await handleViewSetupDetails(interaction, historyId);
+        }
+        
+        // Configuration reset confirmation buttons
+        else if (customId.startsWith('confirm_reset_')) {
+            const guildId = customId.replace('confirm_reset_', '');
+            await handleConfirmReset(interaction, guildId);
+        } else if (customId.startsWith('cancel_reset_')) {
+            const guildId = customId.replace('cancel_reset_', '');
+            await handleCancelReset(interaction, guildId);
+        }
+        
         // Backup import confirmation buttons
         else if (customId.startsWith('backup_confirm_import_')) {
             await handleBackupConfirmImport(interaction);
@@ -1252,6 +1273,185 @@ async function handleConfigExport(interaction) {
     }
 }
 
+// Server restoration handlers
+async function handleRestoreConfig(interaction, historyId) {
+    try {
+        // Get the setup history
+        const setupHistory = await database.getServerSetupHistory(interaction.guild.id);
+        
+        if (!setupHistory || setupHistory.id != historyId) {
+            const embed = new EmbedBuilder()
+                .setTitle('❌ Setup History Not Found')
+                .setDescription('The setup history for this server could not be found.')
+                .setColor(0xE74C3C);
+            
+            return await interaction.reply({ embeds: [embed], ephemeral: true });
+        }
+
+        // Create password verification modal
+        const modal = new ModalBuilder()
+            .setCustomId(`restore_password_${historyId}`)
+            .setTitle('🔑 Verify Password');
+
+        const passwordInput = new TextInputBuilder()
+            .setCustomId('restore_password')
+            .setLabel('Enter the original setup password')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Password used when this server was first configured')
+            .setRequired(true)
+            .setMaxLength(100);
+
+        const actionRow = new ActionRowBuilder().addComponents(passwordInput);
+        modal.addComponents(actionRow);
+
+        await interaction.showModal(modal);
+
+    } catch (error) {
+        console.error('Restore config error:', error);
+        const embed = new EmbedBuilder()
+            .setTitle('❌ Restoration Error')
+            .setDescription(`Failed to initiate restoration: ${error.message}`)
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+}
+
+async function handleResetConfig(interaction, guildId) {
+    try {
+        // Create confirmation modal
+        const embed = new EmbedBuilder()
+            .setTitle('⚠️ Confirm Configuration Reset')
+            .setDescription('**WARNING: This will permanently delete all stored configuration data for this server!**')
+            .addFields(
+                {
+                    name: '🗑️ What will be deleted:',
+                    value: '• All authentication settings\n• User permissions\n• Moderation configurations\n• Setup history\n• All stored passwords',
+                    inline: false
+                },
+                {
+                    name: '🔄 What happens next:',
+                    value: 'You will need to set up the bot completely from scratch using `/config` and `/setup`',
+                    inline: false
+                }
+            )
+            .setColor(0xFF4444)
+            .setTimestamp();
+
+        const actionRow = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`confirm_reset_${guildId}`)
+                    .setLabel('🗑️ Yes, Delete Everything')
+                    .setStyle(ButtonStyle.Danger),
+                new ButtonBuilder()
+                    .setCustomId(`cancel_reset_${guildId}`)
+                    .setLabel('❌ Cancel')
+                    .setStyle(ButtonStyle.Secondary)
+            );
+
+        await interaction.reply({ embeds: [embed], components: [actionRow], ephemeral: true });
+
+    } catch (error) {
+        console.error('Reset config error:', error);
+        const embed = new EmbedBuilder()
+            .setTitle('❌ Reset Error')
+            .setDescription(`Failed to initiate reset: ${error.message}`)
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+}
+
+async function handleViewSetupDetails(interaction, historyId) {
+    try {
+        const setupHistory = await database.getServerSetupHistory(interaction.guild.id);
+        
+        if (!setupHistory || setupHistory.id != historyId) {
+            const embed = new EmbedBuilder()
+                .setTitle('❌ Setup History Not Found')
+                .setDescription('The setup history for this server could not be found.')
+                .setColor(0xE74C3C);
+            
+            return await interaction.reply({ embeds: [embed], ephemeral: true });
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle('📋 Server Setup Details')
+            .setDescription(`Complete setup history for **${setupHistory.guild_name}**`)
+            .addFields(
+                {
+                    name: '🆔 Setup ID',
+                    value: `#${setupHistory.id}`,
+                    inline: true
+                },
+                {
+                    name: '👤 Setup By',
+                    value: `${setupHistory.setup_by_username}\n<@${setupHistory.setup_by_user_id}>`,
+                    inline: true
+                },
+                {
+                    name: '📊 Version',
+                    value: setupHistory.setup_version,
+                    inline: true
+                },
+                {
+                    name: '📅 First Setup',
+                    value: `<t:${Math.floor(new Date(setupHistory.first_setup_at).getTime() / 1000)}:F>`,
+                    inline: true
+                },
+                {
+                    name: '🔄 Last Restored',
+                    value: setupHistory.last_restored_at ? 
+                        `<t:${Math.floor(new Date(setupHistory.last_restored_at).getTime() / 1000)}:F>` : 
+                        'Never restored',
+                    inline: true
+                },
+                {
+                    name: '📈 Restore Count',
+                    value: `${setupHistory.restore_count} times`,
+                    inline: true
+                },
+                {
+                    name: '🔧 Admin Channel',
+                    value: setupHistory.admin_channel_id ? `<#${setupHistory.admin_channel_id}>` : 'Not set',
+                    inline: true
+                },
+                {
+                    name: '📝 Logs Channel',
+                    value: setupHistory.logs_channel_id ? `<#${setupHistory.logs_channel_id}>` : 'Not set',
+                    inline: true
+                },
+                {
+                    name: '🛡️ Status',
+                    value: setupHistory.is_active ? '✅ Active' : '❌ Inactive',
+                    inline: true
+                }
+            )
+            .setColor(0x00aaff)
+            .setTimestamp();
+
+        if (setupHistory.notes) {
+            embed.addFields({
+                name: '📝 Notes',
+                value: setupHistory.notes.slice(0, 1024),
+                inline: false
+            });
+        }
+
+        await interaction.reply({ embeds: [embed], ephemeral: true });
+
+    } catch (error) {
+        console.error('View setup details error:', error);
+        const embed = new EmbedBuilder()
+            .setTitle('❌ Details Error')
+            .setDescription(`Failed to load setup details: ${error.message}`)
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+}
+
 async function handleAdvancedResetConfirm(interaction) {
     try {
         // Reset all moderation settings to defaults
@@ -1533,28 +1733,100 @@ async function handleSlashCommand(interaction) {
 }
 
 async function handleSetupCommand(interaction) {
-    const config = await database.getServerConfig(interaction.guild.id);
-    
-    if (!config || !config.admin_channel_id) {
-        const embed = new EmbedBuilder()
-            .setTitle('⚠️ Configuration Required')
-            .setDescription('Please set up admin and logs channels first using `/config`')
-            .setColor(0xFF6B6B);
+    try {
+        // Check if this server has setup history
+        const setupHistory = await database.getServerSetupHistory(interaction.guild.id);
         
-        return await interaction.reply({ embeds: [embed], ephemeral: true });
-    }
-    
-    if (interaction.channel.id !== config.admin_channel_id) {
-        const embed = new EmbedBuilder()
-            .setTitle('❌ Wrong Channel')
-            .setDescription(`This command can only be used in <#${config.admin_channel_id}>`)
-            .setColor(0xFF6B6B);
+        if (setupHistory) {
+            // Server has been configured before - show restoration options
+            const embed = new EmbedBuilder()
+                .setTitle('🔄 Server Previously Configured')
+                .setDescription(`I have already been configured for **${interaction.guild.name}**`)
+                .addFields(
+                    {
+                        name: '👤 Original Setup By',
+                        value: `${setupHistory.setup_by_username} (<@${setupHistory.setup_by_user_id}>)`,
+                        inline: true
+                    },
+                    {
+                        name: '📅 First Setup',
+                        value: `<t:${Math.floor(new Date(setupHistory.first_setup_at).getTime() / 1000)}:R>`,
+                        inline: true
+                    },
+                    {
+                        name: '🔄 Last Restored',
+                        value: setupHistory.last_restored_at ? 
+                            `<t:${Math.floor(new Date(setupHistory.last_restored_at).getTime() / 1000)}:R>` : 
+                            'Never',
+                        inline: true
+                    },
+                    {
+                        name: '📊 Restore Count',
+                        value: `${setupHistory.restore_count} times`,
+                        inline: true
+                    },
+                    {
+                        name: '📋 Available Data',
+                        value: '• Server Configuration\n• Authentication Settings\n• User Permissions\n• Moderation Settings\n• All Previous Settings',
+                        inline: false
+                    }
+                )
+                .setColor(0x00aaff)
+                .setTimestamp();
+
+            const actionRow = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`restore_config_${setupHistory.id}`)
+                        .setLabel('🔑 Enter Password & Resume')
+                        .setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder()
+                        .setCustomId(`reset_config_${interaction.guild.id}`)
+                        .setLabel('🔄 Reset & Start Fresh')
+                        .setStyle(ButtonStyle.Secondary),
+                    new ButtonBuilder()
+                        .setCustomId(`view_setup_details_${setupHistory.id}`)
+                        .setLabel('📋 View Setup Details')
+                        .setStyle(ButtonStyle.Secondary)
+                );
+
+            return await interaction.reply({ embeds: [embed], components: [actionRow], ephemeral: true });
+        }
+
+        // No setup history - check if basic config exists
+        const config = await database.getServerConfig(interaction.guild.id);
         
-        return await interaction.reply({ embeds: [embed], ephemeral: true });
+        if (!config || !config.admin_channel_id) {
+            const embed = new EmbedBuilder()
+                .setTitle('⚠️ Configuration Required')
+                .setDescription('Please set up admin and logs channels first using `/config`')
+                .setColor(0xFF6B6B);
+            
+            return await interaction.reply({ embeds: [embed], ephemeral: true });
+        }
+        
+        if (interaction.channel.id !== config.admin_channel_id) {
+            const embed = new EmbedBuilder()
+                .setTitle('❌ Wrong Channel')
+                .setDescription(`This command can only be used in <#${config.admin_channel_id}>`)
+                .setColor(0xFF6B6B);
+            
+            return await interaction.reply({ embeds: [embed], ephemeral: true });
+        }
+        
+        // First time setup for this server
+        const setupMenu = await setupSystem.createMainSetupMenu();
+        await interaction.reply(setupMenu);
+        
+    } catch (error) {
+        console.error('Setup command error:', error);
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ Setup Error')
+            .setDescription(`An error occurred during setup: ${error.message}`)
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
     }
-    
-    const setupMenu = await setupSystem.createMainSetupMenu();
-    await interaction.reply(setupMenu);
 }
 
 async function handleConfigCommand(interaction) {
@@ -1562,11 +1834,33 @@ async function handleConfigCommand(interaction) {
     const logsChannel = interaction.options.getChannel('logs-channel');
     
     try {
+        // Check if this is the first configuration for this server
+        const existingConfig = await database.getServerConfig(interaction.guild.id);
+        const isFirstSetup = !existingConfig || !existingConfig.admin_channel_id;
+        
         await database.setServerConfig(interaction.guild.id, {
             adminChannelId: adminChannel.id,
             logsChannelId: logsChannel.id,
             safeRoles: []
         });
+        
+        // If this is the first setup, save to setup history
+        if (isFirstSetup) {
+            // Generate a temporary password hash for the setup (user will set real password in /setup)
+            const bcrypt = require('bcrypt');
+            const tempPassword = Math.random().toString(36).substring(2, 15);
+            const tempPasswordHash = await bcrypt.hash(tempPassword, 10);
+            
+            await database.saveServerSetupHistory(interaction.guild.id, {
+                guildName: interaction.guild.name,
+                setupByUserId: interaction.user.id,
+                setupByUsername: interaction.user.tag,
+                adminPasswordHash: tempPasswordHash,
+                adminChannelId: adminChannel.id,
+                logsChannelId: logsChannel.id,
+                notes: `Initial server configuration via /config command. Authentication setup pending.`
+            });
+        }
         
         const embed = new EmbedBuilder()
             .setTitle('✅ Configuration Updated')
@@ -1577,7 +1871,53 @@ async function handleConfigCommand(interaction) {
             )
             .setColor(0x4ECDC4);
         
+        if (isFirstSetup) {
+            embed.addFields({
+                name: '🔄 Next Steps',
+                value: `• Use \`/setup\` in <#${adminChannel.id}> to configure security features\n• Set up authentication with \`/login\` for enhanced security\n• Configure moderation settings as needed`,
+                inline: false
+            });
+        }
+        
         await interaction.reply({ embeds: [embed] });
+        
+        // Send welcome message to logs channel if this is first setup
+        if (isFirstSetup) {
+            try {
+                const welcomeEmbed = new EmbedBuilder()
+                    .setTitle('🎉 CheeseBot Configuration Started')
+                    .setDescription(`CheeseBot has been initially configured for **${interaction.guild.name}**`)
+                    .addFields(
+                        {
+                            name: '👤 Configured By',
+                            value: `${interaction.user.tag} (<@${interaction.user.id}>)`,
+                            inline: true
+                        },
+                        {
+                            name: '🔧 Admin Channel',
+                            value: `<#${adminChannel.id}>`,
+                            inline: true
+                        },
+                        {
+                            name: '📝 Logs Channel',
+                            value: `<#${logsChannel.id}>`,
+                            inline: true
+                        },
+                        {
+                            name: '🛠️ Configuration Status',
+                            value: 'Basic setup complete - ready for advanced configuration',
+                            inline: false
+                        }
+                    )
+                    .setColor(0x00ff88)
+                    .setTimestamp();
+                
+                await logsChannel.send({ embeds: [welcomeEmbed] });
+            } catch (logError) {
+                console.error('Failed to send welcome message to logs:', logError);
+            }
+        }
+        
     } catch (error) {
         console.error('Config command error:', error);
         await interaction.reply({ content: 'Failed to update configuration!', ephemeral: true });
@@ -3805,6 +4145,11 @@ async function handleModal(interaction) {
                 // Handle getinfo 2FA verification modals
                 else if (interaction.customId.startsWith('getinfo_2fa_')) {
                     await handleGetInfo2FAModal(interaction);
+                    break;
+                }
+                // Handle restore password verification modals
+                else if (interaction.customId.startsWith('restore_password_')) {
+                    await handleRestorePasswordModal(interaction);
                     break;
                 }
                 break;
@@ -7940,6 +8285,202 @@ process.on('SIGINT', () => {
     server.close();
     process.exit(0);
 });
+
+// Handle restore password modal submission
+async function handleRestorePasswordModal(interaction) {
+    try {
+        const historyId = interaction.customId.replace('restore_password_', '');
+        const password = interaction.fields.getTextInputValue('restore_password');
+        
+        await interaction.deferReply({ ephemeral: true });
+        
+        // Get the setup history
+        const setupHistory = await database.getServerSetupHistory(interaction.guild.id);
+        
+        if (!setupHistory || setupHistory.id != historyId) {
+            const embed = new EmbedBuilder()
+                .setTitle('❌ Setup History Not Found')
+                .setDescription('The setup history for this server could not be found.')
+                .setColor(0xE74C3C);
+            
+            return await interaction.editReply({ embeds: [embed] });
+        }
+        
+        // Verify the password using bcrypt
+        const bcrypt = require('bcrypt');
+        const isPasswordValid = await bcrypt.compare(password, setupHistory.admin_password_hash);
+        
+        if (!isPasswordValid) {
+            const embed = new EmbedBuilder()
+                .setTitle('❌ Invalid Password')
+                .setDescription('The password you entered does not match the original setup password.')
+                .addFields({
+                    name: '🔑 Password Hint',
+                    value: 'Enter the password that was used when this server was first configured by the original administrator.',
+                    inline: false
+                })
+                .setColor(0xE74C3C);
+            
+            return await interaction.editReply({ embeds: [embed] });
+        }
+        
+        // Password is correct - restore configuration
+        await database.restoreServerConfiguration(interaction.guild.id, historyId);
+        
+        // Save current setup as new history entry (for backup)
+        await database.saveServerSetupHistory(interaction.guild.id, {
+            guildName: interaction.guild.name,
+            setupByUserId: interaction.user.id,
+            setupByUsername: interaction.user.tag,
+            adminPasswordHash: setupHistory.admin_password_hash,
+            adminChannelId: setupHistory.admin_channel_id,
+            logsChannelId: setupHistory.logs_channel_id,
+            notes: `Configuration restored from setup #${historyId} by ${interaction.user.tag}`
+        });
+        
+        const embed = new EmbedBuilder()
+            .setTitle('✅ Configuration Restored Successfully')
+            .setDescription(`Server configuration has been restored from the previous setup.`)
+            .addFields(
+                {
+                    name: '🔄 Restored From',
+                    value: `Setup #${historyId} by ${setupHistory.setup_by_username}`,
+                    inline: true
+                },
+                {
+                    name: '📅 Original Setup',
+                    value: `<t:${Math.floor(new Date(setupHistory.first_setup_at).getTime() / 1000)}:F>`,
+                    inline: true
+                },
+                {
+                    name: '👤 Restored By',
+                    value: `${interaction.user.tag}`,
+                    inline: true
+                },
+                {
+                    name: '🛠️ What was restored:',
+                    value: '• Authentication settings\n• User permissions\n• Channel configurations\n• Moderation settings\n• All previous configurations',
+                    inline: false
+                },
+                {
+                    name: '🎯 Next Steps',
+                    value: `• Use \`/setup\` to access the configuration menu\n• Admin channel: <#${setupHistory.admin_channel_id}>\n• Logs channel: <#${setupHistory.logs_channel_id}>`,
+                    inline: false
+                }
+            )
+            .setColor(0x00ff00)
+            .setTimestamp();
+        
+        await interaction.editReply({ embeds: [embed] });
+        
+        // Send notification to logs channel
+        try {
+            const logsChannel = interaction.guild.channels.cache.get(setupHistory.logs_channel_id);
+            if (logsChannel) {
+                const logEmbed = new EmbedBuilder()
+                    .setTitle('🔄 Server Configuration Restored')
+                    .setDescription(`CheeseBot configuration has been restored from previous setup.`)
+                    .addFields(
+                        {
+                            name: '👤 Restored By',
+                            value: `${interaction.user.tag} (<@${interaction.user.id}>)`,
+                            inline: true
+                        },
+                        {
+                            name: '📊 Setup ID',
+                            value: `#${historyId}`,
+                            inline: true
+                        },
+                        {
+                            name: '📅 Original Setup',
+                            value: `<t:${Math.floor(new Date(setupHistory.first_setup_at).getTime() / 1000)}:F>`,
+                            inline: true
+                        }
+                    )
+                    .setColor(0x00aaff)
+                    .setTimestamp();
+                
+                await logsChannel.send({ embeds: [logEmbed] });
+            }
+        } catch (logError) {
+            console.error('Failed to send restoration log:', logError);
+        }
+        
+    } catch (error) {
+        console.error('Restore password modal error:', error);
+        const embed = new EmbedBuilder()
+            .setTitle('❌ Restoration Failed')
+            .setDescription(`Failed to restore configuration: ${error.message}`)
+            .setColor(0xE74C3C);
+        
+        if (interaction.deferred) {
+            await interaction.editReply({ embeds: [embed] });
+        } else {
+            await interaction.reply({ embeds: [embed], ephemeral: true });
+        }
+    }
+}
+
+// Handle configuration reset confirmation
+async function handleConfirmReset(interaction, guildId) {
+    try {
+        await interaction.deferReply({ ephemeral: true });
+        
+        // Mark setup history as inactive
+        await database.markServerSetupHistoryInactive(guildId);
+        
+        // Delete all server-related data
+        // Note: You may want to implement additional cleanup methods in your database class
+        
+        const embed = new EmbedBuilder()
+            .setTitle('🗑️ Configuration Reset Complete')
+            .setDescription('All stored configuration data for this server has been permanently deleted.')
+            .addFields(
+                {
+                    name: '✅ Data Deleted',
+                    value: '• Setup history marked inactive\n• Authentication settings cleared\n• User permissions removed\n• Configuration reset',
+                    inline: false
+                },
+                {
+                    name: '🔄 Next Steps',
+                    value: '1. Use `/config` to set admin and logs channels\n2. Use `/setup` to configure the bot from scratch\n3. Set up authentication with `/login`',
+                    inline: false
+                }
+            )
+            .setColor(0x00ff00)
+            .setTimestamp();
+        
+        await interaction.editReply({ embeds: [embed] });
+        
+    } catch (error) {
+        console.error('Confirm reset error:', error);
+        const embed = new EmbedBuilder()
+            .setTitle('❌ Reset Failed')
+            .setDescription(`Failed to reset configuration: ${error.message}`)
+            .setColor(0xE74C3C);
+        
+        await interaction.editReply({ embeds: [embed] });
+    }
+}
+
+async function handleCancelReset(interaction, guildId) {
+    try {
+        const embed = new EmbedBuilder()
+            .setTitle('❌ Reset Cancelled')
+            .setDescription('Configuration reset has been cancelled. No data was deleted.')
+            .setColor(0x00aaff)
+            .setTimestamp();
+        
+        await interaction.reply({ embeds: [embed], ephemeral: true });
+        
+    } catch (error) {
+        console.error('Cancel reset error:', error);
+        await interaction.reply({ 
+            content: '❌ Failed to cancel reset.', 
+            ephemeral: true 
+        });
+    }
+}
 
 // Log in to Discord with your client's token
 client.login(process.env.DISCORD_TOKEN);
