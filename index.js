@@ -495,14 +495,14 @@ const commands = [
                         .setDescription('User who posted the illegal content')
                         .setRequired(true))
                 .addStringOption(option =>
-                    option.setName('message_id')
-                        .setDescription('Message ID of the illegal content (if still visible)')
-                        .setRequired(false))
-                .addStringOption(option =>
                     option.setName('evidence')
                         .setDescription('Description of evidence/content (DO NOT include actual illegal content)')
                         .setRequired(true)
-                        .setMaxLength(1000)))
+                        .setMaxLength(1000))
+                .addStringOption(option =>
+                    option.setName('message_id')
+                        .setDescription('Message ID of the illegal content (if still visible)')
+                        .setRequired(false)))
         .addSubcommand(subcommand =>
             subcommand
                 .setName('list')
@@ -551,8 +551,221 @@ const commands = [
                 .setDescription('Case/incident reference number')
                 .setRequired(false)
                 .setMaxLength(100))
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
+    new SlashCommandBuilder()
+        .setName('update')
+        .setDescription('Log a bot update and notify the logs channel')
+        .addStringOption(option =>
+            option.setName('version')
+                .setDescription('New version number (e.g., 1.1.0)')
+                .setRequired(true)
+                .setMaxLength(20))
+        .addStringOption(option =>
+            option.setName('changelog')
+                .setDescription('Description of changes made in this update')
+                .setRequired(true)
+                .setMaxLength(1000))
+        .addStringOption(option =>
+            option.setName('type')
+                .setDescription('Type of update')
+                .setRequired(false)
+                .addChoices(
+                    { name: 'Major Update', value: 'major' },
+                    { name: 'Minor Update', value: 'minor' },
+                    { name: 'Bug Fix', value: 'bugfix' },
+                    { name: 'Security Update', value: 'security' },
+                    { name: 'Feature Addition', value: 'feature' }
+                ))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 ];
+
+// Get current bot version from package.json
+const packageJson = require('./package.json');
+const CURRENT_VERSION = packageJson.version;
+
+// Update monitoring functions
+async function initializeUpdateMonitoring(client) {
+    try {
+        // Create update tracking table if it doesn't exist
+        database.db.prepare(`
+            CREATE TABLE IF NOT EXISTS bot_updates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                version TEXT NOT NULL,
+                previous_version TEXT,
+                changelog TEXT,
+                update_type TEXT,
+                timestamp TEXT DEFAULT (datetime('now')),
+                logged_by TEXT
+            )
+        `).run();
+
+        // Create bot status table if it doesn't exist
+        database.db.prepare(`
+            CREATE TABLE IF NOT EXISTS bot_status (
+                id INTEGER PRIMARY KEY,
+                last_version TEXT,
+                last_restart TEXT DEFAULT (datetime('now')),
+                restart_count INTEGER DEFAULT 1
+            )
+        `).run();
+
+        // Check for version changes or restarts
+        await checkForUpdatesOrRestarts(client);
+        
+        console.log('✅ Update monitoring system initialized');
+    } catch (error) {
+        console.error('❌ Error initializing update monitoring:', error);
+    }
+}
+
+async function checkForUpdatesOrRestarts(client) {
+    try {
+        // Get current bot status
+        const currentStatus = database.db.prepare('SELECT * FROM bot_status WHERE id = 1').get();
+        
+        if (!currentStatus) {
+            // First time startup
+            database.db.prepare(`
+                INSERT OR REPLACE INTO bot_status (id, last_version, last_restart, restart_count)
+                VALUES (1, ?, datetime('now'), 1)
+            `).run(CURRENT_VERSION);
+            
+            console.log('🆕 First time startup detected');
+            await notifyFirstStartup(client);
+        } else {
+            // Check for version change
+            if (currentStatus.last_version !== CURRENT_VERSION) {
+                console.log(`🔄 Version change detected: ${currentStatus.last_version} → ${CURRENT_VERSION}`);
+                await notifyVersionChange(client, currentStatus.last_version, CURRENT_VERSION);
+                
+                // Update stored version
+                database.db.prepare(`
+                    UPDATE bot_status 
+                    SET last_version = ?, last_restart = datetime('now'), restart_count = restart_count + 1
+                    WHERE id = 1
+                `).run(CURRENT_VERSION);
+            } else {
+                // Just a restart
+                console.log('🔄 Bot restart detected');
+                await notifyRestart(client, currentStatus.restart_count + 1);
+                
+                // Update restart info
+                database.db.prepare(`
+                    UPDATE bot_status 
+                    SET last_restart = datetime('now'), restart_count = restart_count + 1
+                    WHERE id = 1
+                `).run();
+            }
+        }
+    } catch (error) {
+        console.error('❌ Error checking for updates/restarts:', error);
+    }
+}
+
+async function notifyFirstStartup(client) {
+    // Send first startup notification to all configured servers
+    for (const guild of client.guilds.cache.values()) {
+        try {
+            const config = database.getServerConfig(guild.id);
+            if (config && config.logs_channel_id) {
+                const logsChannel = guild.channels.cache.get(config.logs_channel_id);
+                if (logsChannel) {
+                    const embed = new EmbedBuilder()
+                        .setTitle('🆕 Bot First Startup')
+                        .setDescription(`CheeseBot v${CURRENT_VERSION} is now online for the first time!`)
+                        .addFields(
+                            { name: '🔧 Version', value: `\`${CURRENT_VERSION}\``, inline: true },
+                            { name: '⏰ Started', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
+                            { name: '📋 Status', value: 'All systems operational', inline: true }
+                        )
+                        .setColor(0x00ff00)
+                        .setTimestamp();
+
+                    await logsChannel.send({ embeds: [embed] });
+                }
+            }
+        } catch (error) {
+            console.error(`Error sending first startup notification to ${guild.name}:`, error);
+        }
+    }
+}
+
+async function notifyVersionChange(client, oldVersion, newVersion) {
+    // Send version change notification to all configured servers
+    for (const guild of client.guilds.cache.values()) {
+        try {
+            const config = database.getServerConfig(guild.id);
+            if (config && config.logs_channel_id) {
+                const logsChannel = guild.channels.cache.get(config.logs_channel_id);
+                if (logsChannel) {
+                    // Check if there's a logged update for this version
+                    const updateInfo = database.db.prepare(`
+                        SELECT * FROM bot_updates 
+                        WHERE version = ? 
+                        ORDER BY timestamp DESC 
+                        LIMIT 1
+                    `).get(newVersion);
+
+                    const embed = new EmbedBuilder()
+                        .setTitle('🔄 Bot Update Detected')
+                        .setDescription(`CheeseBot has been updated from v${oldVersion} to v${newVersion}`)
+                        .addFields(
+                            { name: '📊 Previous Version', value: `\`${oldVersion}\``, inline: true },
+                            { name: '🆕 New Version', value: `\`${newVersion}\``, inline: true },
+                            { name: '⏰ Updated', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
+                        )
+                        .setColor(0x00aaff);
+
+                    if (updateInfo) {
+                        embed.addFields(
+                            { name: '📝 Changelog', value: updateInfo.changelog.slice(0, 1024), inline: false },
+                            { name: '🏷️ Update Type', value: updateInfo.update_type || 'Unknown', inline: true }
+                        );
+                    } else {
+                        embed.addFields(
+                            { name: '📝 Note', value: 'Use `/update` command to log detailed changelog information', inline: false }
+                        );
+                    }
+
+                    embed.setTimestamp();
+                    await logsChannel.send({ embeds: [embed] });
+                }
+            }
+        } catch (error) {
+            console.error(`Error sending version change notification to ${guild.name}:`, error);
+        }
+    }
+}
+
+async function notifyRestart(client, restartCount) {
+    // Send restart notification to all configured servers
+    for (const guild of client.guilds.cache.values()) {
+        try {
+            const config = database.getServerConfig(guild.id);
+            if (config && config.logs_channel_id) {
+                const logsChannel = guild.channels.cache.get(config.logs_channel_id);
+                if (logsChannel) {
+                    const embed = new EmbedBuilder()
+                        .setTitle('🔄 Bot Restart')
+                        .setDescription(`CheeseBot has restarted (same version: v${CURRENT_VERSION})`)
+                        .addFields(
+                            { name: '🔢 Restart Count', value: `${restartCount}`, inline: true },
+                            { name: '⏰ Restarted', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
+                            { name: '📊 Version', value: `\`${CURRENT_VERSION}\``, inline: true },
+                            { name: '💡 Possible Reasons', value: '• Server maintenance\n• Configuration updates\n• Memory optimization\n• Manual restart', inline: false }
+                        )
+                        .setColor(0xffaa00)
+                        .setTimestamp();
+
+                    await logsChannel.send({ embeds: [embed] });
+                }
+            }
+        } catch (error) {
+            console.error(`Error sending restart notification to ${guild.name}:`, error);
+        }
+    }
+}
 
 // When the client is ready, run this code (only once)
 client.once(Events.ClientReady, async readyClient => {
@@ -564,6 +777,13 @@ client.once(Events.ClientReady, async readyClient => {
         console.log('✅ Authentication system initialized');
     } catch (error) {
         console.error('❌ Failed to initialize authentication system:', error);
+    }
+    
+    // Initialize update monitoring system
+    try {
+        await initializeUpdateMonitoring(readyClient);
+    } catch (error) {
+        console.error('❌ Failed to initialize update monitoring:', error);
     }
     
     // Register slash commands globally
@@ -1293,6 +1513,10 @@ async function handleSlashCommand(interaction) {
                 await handleGetInfoCommand(interaction);
                 break;
             
+            case 'update':
+                await handleUpdateCommand(interaction);
+                break;
+            
             default:
                 await interaction.reply({ content: 'Unknown command!', ephemeral: true });
         }
@@ -1511,6 +1735,129 @@ async function handleQRCodeCommand(interaction) {
             .setColor(0xE74C3C);
         
         await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+}
+
+async function handleUpdateCommand(interaction) {
+    try {
+        // Require authentication
+        const authCheck = await authSystem.requireAuthentication(interaction, moderationSystem);
+        if (authCheck.required) {
+            return await interaction.reply(authCheck.response);
+        }
+
+        const version = interaction.options.getString('version');
+        const changelog = interaction.options.getString('changelog');
+        const updateType = interaction.options.getString('type') || 'minor';
+
+        await interaction.deferReply({ ephemeral: true });
+
+        // Get current version for comparison
+        const currentVersion = CURRENT_VERSION;
+        
+        // Store the update information in database
+        const updateId = database.db.prepare(`
+            INSERT INTO bot_updates (version, previous_version, changelog, update_type, logged_by)
+            VALUES (?, ?, ?, ?, ?)
+        `).run(version, currentVersion, changelog, updateType, interaction.user.id).lastInsertRowid;
+
+        // Update the package.json version (for tracking purposes)
+        const fs = require('fs');
+        const packagePath = './package.json';
+        const packageData = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+        packageData.version = version;
+        fs.writeFileSync(packagePath, JSON.stringify(packageData, null, 2));
+
+        // Create update notification embed
+        const embed = new EmbedBuilder()
+            .setTitle('📝 Update Logged Successfully')
+            .setDescription(`Bot update v${version} has been logged and will be announced.`)
+            .addFields(
+                { name: '🔢 Update ID', value: `#${updateId}`, inline: true },
+                { name: '📊 Version', value: `\`${version}\``, inline: true },
+                { name: '🏷️ Type', value: updateType, inline: true },
+                { name: '📝 Changelog', value: changelog.slice(0, 1024), inline: false },
+                { name: '👤 Logged By', value: `<@${interaction.user.id}>`, inline: true },
+                { name: '⏰ Timestamp', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
+            )
+            .setColor(0x00ff00)
+            .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
+
+        // Send update notification to all servers
+        await notifyManualUpdate(interaction.client, {
+            version,
+            previousVersion: currentVersion,
+            changelog,
+            updateType,
+            loggedBy: interaction.user,
+            updateId
+        });
+
+        console.log(`📝 Update v${version} logged by ${interaction.user.tag}`);
+
+    } catch (error) {
+        console.error('Update command error:', error);
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ Update Logging Failed')
+            .setDescription(`Failed to log update: ${error.message}`)
+            .setColor(0xE74C3C);
+        
+        if (interaction.deferred) {
+            await interaction.editReply({ embeds: [errorEmbed] });
+        } else {
+            await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+        }
+    }
+}
+
+async function notifyManualUpdate(client, updateInfo) {
+    // Send manual update notification to all configured servers
+    for (const guild of client.guilds.cache.values()) {
+        try {
+            const config = database.getServerConfig(guild.id);
+            if (config && config.logs_channel_id) {
+                const logsChannel = guild.channels.cache.get(config.logs_channel_id);
+                if (logsChannel) {
+                    const typeEmojis = {
+                        major: '🚀',
+                        minor: '✨',
+                        bugfix: '🐛',
+                        security: '🔒',
+                        feature: '🆕'
+                    };
+
+                    const typeColors = {
+                        major: 0xff0066,
+                        minor: 0x00aaff,
+                        bugfix: 0xffaa00,
+                        security: 0xff4444,
+                        feature: 0x00ff88
+                    };
+
+                    const embed = new EmbedBuilder()
+                        .setTitle(`${typeEmojis[updateInfo.updateType] || '📝'} Bot Update Released`)
+                        .setDescription(`CheeseBot has been updated to version **${updateInfo.version}**`)
+                        .addFields(
+                            { name: '📊 Previous Version', value: `\`${updateInfo.previousVersion}\``, inline: true },
+                            { name: '🆕 New Version', value: `\`${updateInfo.version}\``, inline: true },
+                            { name: '🏷️ Update Type', value: updateInfo.updateType.charAt(0).toUpperCase() + updateInfo.updateType.slice(1), inline: true },
+                            { name: '📝 What\'s New', value: updateInfo.changelog.slice(0, 1024), inline: false },
+                            { name: '👤 Release Manager', value: `${updateInfo.loggedBy.tag}`, inline: true },
+                            { name: '🆔 Update ID', value: `#${updateInfo.updateId}`, inline: true },
+                            { name: '⏰ Released', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
+                        )
+                        .setColor(typeColors[updateInfo.updateType] || 0x00aaff)
+                        .setFooter({ text: 'CheeseBot Update System' })
+                        .setTimestamp();
+
+                    await logsChannel.send({ embeds: [embed] });
+                }
+            }
+        } catch (error) {
+            console.error(`Error sending manual update notification to ${guild.name}:`, error);
+        }
     }
 }
 
