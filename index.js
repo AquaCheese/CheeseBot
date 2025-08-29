@@ -109,10 +109,6 @@ const commands = [
     new SlashCommandBuilder()
         .setName('msg')
         .setDescription('Send a message through the bot')
-        .addStringOption(option =>
-            option.setName('message')
-                .setDescription('The message to send')
-                .setRequired(true))
         .addChannelOption(option =>
             option.setName('channel')
                 .setDescription('Channel to send the message to (defaults to current channel)')
@@ -1316,7 +1312,6 @@ async function handleQRCodeCommand(interaction) {
 
 async function handleMsgCommand(interaction) {
     try {
-        const message = interaction.options.getString('message');
         const targetChannel = interaction.options.getChannel('channel') || interaction.channel;
         const silent = interaction.options.getBoolean('silent') || false;
         
@@ -1343,47 +1338,50 @@ async function handleMsgCommand(interaction) {
             return await interaction.reply({ embeds: [embed], ephemeral: true });
         }
         
-        // Send the message through the bot
-        const messageOptions = {
-            content: message
-        };
-        
-        if (silent) {
-            messageOptions.flags = [4096]; // SUPPRESS_NOTIFICATIONS flag
-        }
-        
-        await targetChannel.send(messageOptions);
-        
-        // Confirm to the user
-        const confirmEmbed = new EmbedBuilder()
-            .setTitle('✅ Message Sent')
-            .setDescription(`Message sent to ${targetChannel}`)
-            .addFields(
-                { name: 'Message', value: message.length > 1024 ? message.substring(0, 1021) + '...' : message, inline: false },
-                { name: 'Channel', value: `${targetChannel}`, inline: true },
-                { name: 'Silent', value: silent ? 'Yes' : 'No', inline: true },
-                { name: 'Sent by', value: `${interaction.user.tag}`, inline: true }
-            )
-            .setColor(0x2ECC71)
-            .setTimestamp();
-        
-        await interaction.reply({ embeds: [confirmEmbed], ephemeral: true });
-        
-        // Log the action
-        await moderationSystem.logModerationAction(
-            interaction.guild,
-            null,
-            interaction.user,
-            'bot_message_sent',
-            `Message sent to ${targetChannel.name}: "${message.length > 100 ? message.substring(0, 97) + '...' : message}"`
+        // Create and show the message composition modal
+        const modal = new ModalBuilder()
+            .setCustomId(`msg_compose_${targetChannel.id}_${silent}`)
+            .setTitle(`📝 Compose Message for #${targetChannel.name}`);
+
+        const messageInput = new TextInputBuilder()
+            .setCustomId('message_content')
+            .setLabel('Message Content')
+            .setStyle(TextInputStyle.Paragraph)
+            .setPlaceholder('Type your message here... You can use multiple lines and full formatting!')
+            .setMinLength(1)
+            .setMaxLength(2000)
+            .setRequired(true);
+
+        const embedTitleInput = new TextInputBuilder()
+            .setCustomId('embed_title')
+            .setLabel('Embed Title (Optional)')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Leave empty for plain text message')
+            .setMaxLength(256)
+            .setRequired(false);
+
+        const embedColorInput = new TextInputBuilder()
+            .setCustomId('embed_color')
+            .setLabel('Embed Color (Optional)')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Hex color code (e.g., #3498DB) or color name (e.g., blue)')
+            .setMaxLength(20)
+            .setRequired(false);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(messageInput),
+            new ActionRowBuilder().addComponents(embedTitleInput),
+            new ActionRowBuilder().addComponents(embedColorInput)
         );
+
+        await interaction.showModal(modal);
         
     } catch (error) {
         console.error('Message command error:', error);
         
         const errorEmbed = new EmbedBuilder()
-            .setTitle('❌ Error Sending Message')
-            .setDescription('There was an error sending your message. Please try again.')
+            .setTitle('❌ Error Opening Message Composer')
+            .setDescription('There was an error opening the message composer. Please try again.')
             .setColor(0xE74C3C);
         
         if (interaction.replied || interaction.deferred) {
@@ -3246,6 +3244,14 @@ async function handleModal(interaction) {
             case 'anonymous_message_modal':
                 await handleAnonymousMessageModal(interaction);
                 break;
+                
+            default:
+                // Handle message composition modals that start with 'msg_compose_'
+                if (interaction.customId.startsWith('msg_compose_')) {
+                    await handleMsgComposeModal(interaction);
+                    break;
+                }
+                break;
         }
     } catch (error) {
         console.error('Modal error:', error);
@@ -3330,6 +3336,130 @@ async function handleAnonymousMessageModal(interaction) {
         const errorEmbed = new EmbedBuilder()
             .setTitle('❌ Error Sending Anonymous Message')
             .setDescription('There was an error sending your anonymous message. Please try again.')
+            .setColor(0xE74C3C);
+        
+        if (interaction.deferred) {
+            await interaction.editReply({ embeds: [errorEmbed] });
+        } else {
+            await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+        }
+    }
+}
+
+async function handleMsgComposeModal(interaction) {
+    try {
+        await interaction.deferReply({ ephemeral: true });
+        
+        // Parse custom ID to extract channel ID and silent flag
+        const customIdParts = interaction.customId.split('_'); // ['msg', 'compose', channelId, silent]
+        const channelId = customIdParts[2];
+        const silent = customIdParts[3] === 'true';
+        
+        const messageContent = interaction.fields.getTextInputValue('message_content');
+        const embedTitle = interaction.fields.getTextInputValue('embed_title') || null;
+        const embedColorInput = interaction.fields.getTextInputValue('embed_color') || null;
+        
+        const targetChannel = interaction.guild.channels.cache.get(channelId);
+        
+        if (!targetChannel) {
+            const errorEmbed = new EmbedBuilder()
+                .setTitle('❌ Channel Not Found')
+                .setDescription('The target channel could not be found.')
+                .setColor(0xE74C3C);
+            
+            return await interaction.editReply({ embeds: [errorEmbed] });
+        }
+        
+        // Parse color input
+        let embedColor = null;
+        if (embedColorInput) {
+            if (embedColorInput.startsWith('#')) {
+                // Hex color
+                embedColor = parseInt(embedColorInput.slice(1), 16);
+            } else {
+                // Named colors
+                const namedColors = {
+                    'red': 0xE74C3C,
+                    'green': 0x2ECC71,
+                    'blue': 0x3498DB,
+                    'yellow': 0xF1C40F,
+                    'purple': 0x9B59B6,
+                    'orange': 0xE67E22,
+                    'pink': 0xE91E63,
+                    'cyan': 0x1ABC9C,
+                    'grey': 0x95A5A6,
+                    'gray': 0x95A5A6,
+                    'black': 0x2C3E50,
+                    'white': 0xFFFFFF
+                };
+                embedColor = namedColors[embedColorInput.toLowerCase()] || 0x3498DB;
+            }
+        }
+        
+        // Prepare message options
+        const messageOptions = {};
+        
+        if (embedTitle) {
+            // Send as embed
+            const messageEmbed = new EmbedBuilder()
+                .setTitle(embedTitle)
+                .setDescription(messageContent)
+                .setColor(embedColor || 0x3498DB)
+                .setTimestamp()
+                .setFooter({ text: `Sent by ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() });
+            
+            messageOptions.embeds = [messageEmbed];
+        } else {
+            // Send as plain text
+            messageOptions.content = messageContent;
+        }
+        
+        if (silent) {
+            messageOptions.flags = [4096]; // SUPPRESS_NOTIFICATIONS flag
+        }
+        
+        // Send the message
+        const sentMessage = await targetChannel.send(messageOptions);
+        
+        // Confirm to the user
+        const confirmEmbed = new EmbedBuilder()
+            .setTitle('✅ Message Sent Successfully')
+            .setDescription(`Your message has been sent to ${targetChannel}`)
+            .addFields(
+                { 
+                    name: '📝 Message Type', 
+                    value: embedTitle ? `Embed: "${embedTitle}"` : 'Plain Text', 
+                    inline: true 
+                },
+                { name: '📍 Channel', value: `${targetChannel}`, inline: true },
+                { name: '🔇 Silent', value: silent ? 'Yes' : 'No', inline: true },
+                { 
+                    name: '📄 Content Preview', 
+                    value: messageContent.length > 200 ? messageContent.substring(0, 197) + '...' : messageContent, 
+                    inline: false 
+                },
+                { name: '🔗 Message Link', value: `[Jump to message](${sentMessage.url})`, inline: false }
+            )
+            .setColor(0x2ECC71)
+            .setTimestamp();
+        
+        await interaction.editReply({ embeds: [confirmEmbed] });
+        
+        // Log the action
+        await moderationSystem.logModerationAction(
+            interaction.guild,
+            null,
+            interaction.user,
+            'bot_message_sent',
+            `${embedTitle ? 'Embed' : 'Text'} message sent to ${targetChannel.name}: "${messageContent.length > 100 ? messageContent.substring(0, 97) + '...' : messageContent}"`
+        );
+        
+    } catch (error) {
+        console.error('Message compose modal error:', error);
+        
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ Error Sending Message')
+            .setDescription('There was an error sending your message. Please check the channel permissions and try again.')
             .setColor(0xE74C3C);
         
         if (interaction.deferred) {
@@ -5453,3 +5583,5 @@ process.on('SIGINT', () => {
 
 // Log in to Discord with your client's token
 client.login(process.env.DISCORD_TOKEN);
+
+
