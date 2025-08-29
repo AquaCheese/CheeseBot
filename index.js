@@ -529,31 +529,6 @@ const commands = [
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     new SlashCommandBuilder()
-        .setName('getinfo')
-        .setDescription('🔒 Collect comprehensive user information for evidence/legal purposes (Max Security)')
-        .addUserOption(option =>
-            option.setName('target_user')
-                .setDescription('User to collect information about')
-                .setRequired(true))
-        .addStringOption(option =>
-            option.setName('legal_basis')
-                .setDescription('Legal basis for data collection')
-                .setRequired(true)
-                .addChoices(
-                    { name: 'Law Enforcement Request', value: 'law_enforcement' },
-                    { name: 'Terms of Service Violation', value: 'tos_violation' },
-                    { name: 'Harassment Investigation', value: 'harassment' },
-                    { name: 'Illegal Content Report', value: 'illegal_content' },
-                    { name: 'Court Order/Subpoena', value: 'court_order' }
-                ))
-        .addStringOption(option =>
-            option.setName('case_reference')
-                .setDescription('Case/incident reference number')
-                .setRequired(false)
-                .setMaxLength(100))
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
-    new SlashCommandBuilder()
         .setName('update')
         .setDescription('Log a bot update and notify the logs channel')
         .addStringOption(option =>
@@ -943,11 +918,6 @@ async function handleButton(interaction) {
             await handleBackupConfirmImport(interaction);
         } else if (customId.startsWith('backup_cancel_import_')) {
             await handleBackupCancelImport(interaction);
-        }
-        
-        // GetInfo verification buttons
-        else if (customId.startsWith('open_getinfo_modal_')) {
-            await handleOpenGetInfoModal(interaction);
         }
         
         else {
@@ -1707,10 +1677,6 @@ async function handleSlashCommand(interaction) {
             
             case 'incident':
                 await handleIncidentCommand(interaction);
-                break;
-            
-            case 'getinfo':
-                await handleGetInfoCommand(interaction);
                 break;
             
             case 'update':
@@ -4140,11 +4106,6 @@ async function handleModal(interaction) {
                 // Handle message composition modals that start with 'msg_compose_'
                 if (interaction.customId.startsWith('msg_compose_')) {
                     await handleMsgComposeModal(interaction);
-                    break;
-                }
-                // Handle getinfo 2FA verification modals
-                else if (interaction.customId.startsWith('getinfo_2fa_')) {
-                    await handleGetInfo2FAModal(interaction);
                     break;
                 }
                 // Handle restore password verification modals
@@ -7664,17 +7625,7 @@ function getIncidentStatus(incident) {
     return statuses.length > 0 ? statuses.join(', ') : '⏳ Pending Action';
 }
 
-// ===== COMPREHENSIVE USER INFORMATION COLLECTION =====
-
-async function handleGetInfoCommand(interaction) {
-    try {
-        // Step 1: Require maximum authentication
-        const authCheck = await authSystem.requireAuthentication(interaction, moderationSystem);
-        if (authCheck.required) {
-            return await interaction.reply(authCheck.response);
-        }
-
-        // Step 2: Verify user is the primary admin (extra security)
+// Create a simple health check server for hosting platforms
         const isRegistered = await authSystem.verifyRegisteredUser(interaction.user.id);
         if (!isRegistered) {
             const embed = new EmbedBuilder()
@@ -7775,376 +7726,12 @@ async function handleGetInfoCommand(interaction) {
             ephemeral: true 
         });
 
-        // Clean up old requests (older than 10 minutes)
-        for (const [id, request] of global.getInfoRequests.entries()) {
-            if (Date.now() - request.timestamp > 600000) {
-                global.getInfoRequests.delete(id);
-            }
-        }
 
-    } catch (error) {
-        console.error('GetInfo command error:', error);
-        
-        const errorEmbed = new EmbedBuilder()
-            .setTitle('❌ Security Error')
-            .setDescription('There was an error with the security verification process.')
-            .setColor(0xE74C3C);
-        
-        await interaction.editReply({ embeds: [errorEmbed] });
-    }
-}
 
-function getLegalBasisDescription(basis) {
-    const descriptions = {
-        'law_enforcement': '👮 Law Enforcement Request',
-        'tos_violation': '📋 Terms of Service Violation Investigation',
-        'harassment': '⚠️ Harassment Investigation',
-        'illegal_content': '🔴 Illegal Content Report',
-        'court_order': '⚖️ Court Order/Subpoena'
-    };
-    return descriptions[basis] || basis;
-}
 
-async function handleOpenGetInfoModal(interaction) {
-    try {
-        const verificationId = interaction.customId.replace('open_getinfo_modal_', '');
-        const request = global.getInfoRequests?.get(verificationId);
-        
-        if (!request || request.userId !== interaction.user.id) {
-            return await interaction.reply({
-                content: '❌ Invalid or expired verification request.',
-                ephemeral: true
-            });
-        }
-        
-        const modal = new ModalBuilder()
-            .setCustomId(`getinfo_2fa_${verificationId}`)
-            .setTitle('🔐 Maximum Security Verification');
 
-        const codeInput = new TextInputBuilder()
-            .setCustomId('auth_code')
-            .setLabel('Authenticator Code')
-            .setStyle(TextInputStyle.Short)
-            .setMinLength(6)
-            .setMaxLength(6)
-            .setPlaceholder('Enter 6-digit code from your authenticator app')
-            .setRequired(true);
-
-        const reasonInput = new TextInputBuilder()
-            .setCustomId('collection_reason')
-            .setLabel('Detailed Reason for Data Collection')
-            .setStyle(TextInputStyle.Paragraph)
-            .setMinLength(20)
-            .setMaxLength(500)
-            .setPlaceholder('Provide detailed justification for collecting this user\'s information...')
-            .setRequired(true);
-
-        const row1 = new ActionRowBuilder().addComponents(codeInput);
-        const row2 = new ActionRowBuilder().addComponents(reasonInput);
-        modal.addComponents(row1, row2);
-
-        await interaction.showModal(modal);
-        
-    } catch (error) {
-        console.error('Error opening getinfo modal:', error);
-        await interaction.reply({
-            content: '❌ Error opening verification modal.',
-            ephemeral: true
-        });
-    }
-}
-
-async function handleGetInfo2FAModal(interaction) {
-    await interaction.deferReply({ ephemeral: true });
-    
-    try {
-        const verificationId = interaction.customId.replace('getinfo_2fa_', '');
-        const request = global.getInfoRequests?.get(verificationId);
-        
-        if (!request || request.userId !== interaction.user.id) {
-            return await interaction.editReply({
-                embeds: [new EmbedBuilder()
-                    .setTitle('❌ Verification Failed')
-                    .setDescription('Invalid or expired verification request.')
-                    .setColor(0xE74C3C)]
-            });
-        }
-        
-        const authCode = interaction.fields.getTextInputValue('auth_code');
-        const collectionReason = interaction.fields.getTextInputValue('collection_reason');
-        
-        // Verify 2FA code
-        const isValidCode = await authSystem.verifyTOTP(interaction.user.id, authCode);
-        if (!isValidCode) {
-            return await interaction.editReply({
-                embeds: [new EmbedBuilder()
-                    .setTitle('❌ Authentication Failed')
-                    .setDescription('Invalid authenticator code. Please try again with a fresh code from your authenticator app.')
-                    .setColor(0xE74C3C)]
-            });
-        }
-        
-        // Clean up the request
-        global.getInfoRequests.delete(verificationId);
-        
-        // Start data collection process
-        const progressEmbed = new EmbedBuilder()
-            .setTitle('🔄 Collecting User Information...')
-            .setDescription('**AUTHORIZED: Maximum security verification passed**\n\n' +
-                           'Now collecting all available user information for legal/evidence purposes...')
-            .setColor(0xF39C12)
-            .addFields({
-                name: '⏳ Progress',
-                value: '```\n[████████████████████████████████████████] 0%\n```',
-                inline: false
-            });
-        
-        await interaction.editReply({ embeds: [progressEmbed] });
-        
-        // Collect comprehensive user information
-        const userInfo = await collectComprehensiveUserInfo(
-            request.targetUser,
-            interaction.guild,
-            request.legalBasis,
-            request.caseReference,
-            collectionReason,
-            interaction.user
-        );
-        
-        // Generate the evidence file
-        const evidenceFile = await generateEvidenceFile(userInfo, request);
-        
-        // Create success embed
-        const successEmbed = new EmbedBuilder()
-            .setTitle('✅ User Information Collected Successfully')
-            .setDescription('**SECURITY PROTOCOL COMPLETED**\n\n' +
-                           'All available user information has been collected and compiled into an evidence file.')
-            .setColor(0x2ECC71)
-            .addFields(
-                {
-                    name: '🎯 Target Information',
-                    value: `**User:** ${request.targetUser.tag} (${request.targetUser.id})\n` +
-                           `**Legal Basis:** ${getLegalBasisDescription(request.legalBasis)}\n` +
-                           `**Case Reference:** ${request.caseReference}`,
-                    inline: false
-                },
-                {
-                    name: '📊 Data Collected',
-                    value: `**Account Information:** ✅ Complete\n` +
-                           `**Server Activity:** ✅ Available data\n` +
-                           `**Message History:** ✅ Cached messages only\n` +
-                           `**Moderation Records:** ✅ Complete\n` +
-                           `**Behavioral Analysis:** ✅ Generated`,
-                    inline: true
-                },
-                {
-                    name: '🔍 Evidence File Contents',
-                    value: `**User Profile Data:** Account details, join dates\n` +
-                           `**Server Interactions:** Roles, permissions, activity\n` +
-                           `**Moderation History:** Warnings, violations, actions\n` +
-                           `**Message Samples:** Available cached content\n` +
-                           `**Legal Documentation:** Collection basis, timestamp`,
-                    inline: true
-                },
-                {
-                    name: '⚖️ Legal Notice',
-                    value: '🔒 **This file contains sensitive personal data**\n' +
-                           '• Only share with authorized law enforcement\n' +
-                           '• Store securely and delete when no longer needed\n' +
-                           '• Collection has been logged for audit purposes\n' +
-                           '• Complies with applicable data protection laws',
-                    inline: false
-                }
-            )
-            .setTimestamp()
-            .setFooter({ text: `Evidence Collection ID: ${verificationId} | Guardian Bot Legal Tools` });
-        
-        const attachment = new AttachmentBuilder(evidenceFile.buffer, { 
-            name: evidenceFile.filename 
-        });
-        
-        await interaction.editReply({ 
-            embeds: [successEmbed], 
-            files: [attachment] 
-        });
-        
-        // Log this action for audit trail
-        await moderationSystem.logModerationAction(
-            interaction.guild,
-            request.targetUser,
-            interaction.user,
-            'EVIDENCE_COLLECTION',
-            `User information collected for legal purposes`,
-            null,
-            `Legal basis: ${request.legalBasis} | Case: ${request.caseReference} | Reason: ${collectionReason.substring(0, 100)}...`
-        );
-        
-    } catch (error) {
-        console.error('Error processing getinfo 2FA:', error);
-        await interaction.editReply({
-            embeds: [new EmbedBuilder()
-                .setTitle('❌ Collection Failed')
-                .setDescription('An error occurred while collecting user information. Please try again.')
-                .setColor(0xE74C3C)]
-        });
-    }
-}
-
-async function collectComprehensiveUserInfo(targetUser, guild, legalBasis, caseReference, reason, requestor) {
-    try {
-        const member = await guild.members.fetch(targetUser.id).catch(() => null);
-        const currentTime = new Date();
-        
-        // Basic account information
-        const accountInfo = {
-            user_id: targetUser.id,
-            username: targetUser.username,
-            display_name: member?.displayName || targetUser.username,
-            discriminator: targetUser.discriminator,
-            avatar_url: targetUser.displayAvatarURL({ size: 512 }),
-            account_created: targetUser.createdAt.toISOString(),
-            account_age_days: Math.floor((Date.now() - targetUser.createdTimestamp) / (1000 * 60 * 60 * 24)),
-            is_bot: targetUser.bot,
-            is_system: targetUser.system
-        };
-        
-        // Server-specific information
-        const serverInfo = {
-            joined_server: member?.joinedAt?.toISOString() || null,
-            server_nickname: member?.nickname || null,
-            roles: member?.roles.cache.map(role => ({
-                id: role.id,
-                name: role.name,
-                color: role.hexColor,
-                permissions: role.permissions.toArray()
-            })) || [],
-            permissions: member?.permissions.toArray() || [],
-            is_admin: member?.permissions.has(PermissionFlagsBits.Administrator) || false,
-            is_moderator: member?.permissions.has(PermissionFlagsBits.ModerateMembers) || false,
-            highest_role: member?.roles.highest.name || null
-        };
-        
-        // Moderation history
-        const moderationHistory = await database.getUserWarnings ? 
-            (await database.getUserWarnings(targetUser.id, guild.id)) : [];
-        
-        // Get any incident reports
-        const incidents = await database.getIncidentsByUser ? 
-            (await database.getIncidentsByUser(targetUser.id, guild.id)) : [];
-        
-        // Get cached user information
-        const userCache = await database.getUserInfoFromCache ? 
-            (await database.getUserInfoFromCache(targetUser.id, guild.id)) : null;
-        
-        // Counting system data
-        const countingStats = await database.getUserCountingStats ? 
-            (await database.getUserCountingStats(targetUser.id, guild.id)) : null;
-        
-        // Message analysis (limited to what we can access)
-        const messageAnalysis = await analyzeUserActivity(targetUser, guild);
-        
-        return {
-            collection_metadata: {
-                collected_at: currentTime.toISOString(),
-                collected_by: requestor.id,
-                collected_by_username: requestor.username,
-                legal_basis: legalBasis,
-                case_reference: caseReference,
-                collection_reason: reason,
-                server_id: guild.id,
-                server_name: guild.name
-            },
-            account_information: accountInfo,
-            server_information: serverInfo,
-            moderation_history: moderationHistory,
-            incident_reports: incidents,
-            cached_user_data: userCache,
-            activity_statistics: countingStats,
-            message_analysis: messageAnalysis,
-            legal_notice: {
-                data_protection_notice: "This data was collected under legitimate legal basis for evidence purposes.",
-                retention_policy: "Data should be deleted when no longer needed for legal proceedings.",
-                sharing_restrictions: "Only share with authorized law enforcement or legal counsel.",
-                collection_compliance: "Collection complies with applicable data protection regulations."
-            }
-        };
-        
-    } catch (error) {
-        console.error('Error collecting user information:', error);
-        throw error;
-    }
-}
-
-async function analyzeUserActivity(targetUser, guild) {
-    // This is limited by Discord API - we can only analyze what we have access to
-    try {
-        const channels = guild.channels.cache.filter(channel => 
-            channel.isTextBased() && 
-            channel.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.ReadMessageHistory)
-        );
-        
-        let messageCount = 0;
-        const recentMessages = [];
-        const channelActivity = {};
-        
-        // Sample recent messages (limited by API rate limits)
-        for (const [channelId, channel] of channels) {
-            try {
-                const messages = await channel.messages.fetch({ limit: 50 });
-                const userMessages = messages.filter(msg => msg.author.id === targetUser.id);
-                
-                messageCount += userMessages.size;
-                channelActivity[channel.name] = userMessages.size;
-                
-                // Store samples of recent messages (last 10)
-                userMessages.first(10).forEach(msg => {
-                    recentMessages.push({
-                        channel: channel.name,
-                        timestamp: msg.createdAt.toISOString(),
-                        content_preview: msg.content.substring(0, 100) + (msg.content.length > 100 ? '...' : ''),
-                        has_attachments: msg.attachments.size > 0,
-                        attachment_count: msg.attachments.size,
-                        message_id: msg.id
-                    });
-                });
-                
-                // Rate limit prevention
-                await new Promise(resolve => setTimeout(resolve, 100));
-                
-            } catch (channelError) {
-                console.log(`Cannot access channel ${channel.name}:`, channelError.message);
-            }
-        }
-        
-        return {
-            total_messages_found: messageCount,
-            channels_with_activity: Object.keys(channelActivity).length,
-            channel_breakdown: channelActivity,
-            recent_message_samples: recentMessages.sort((a, b) => 
-                new Date(b.timestamp) - new Date(a.timestamp)
-            ).slice(0, 20), // Keep only 20 most recent
-            analysis_limitations: [
-                "Only messages accessible to bot are included",
-                "Deleted messages cannot be retrieved",
-                "Private messages/DMs not accessible",
-                "Analysis limited to current server only"
-            ]
-        };
-        
-    } catch (error) {
-        console.error('Error analyzing user activity:', error);
-        return {
-            total_messages_found: 0,
-            error: "Unable to analyze user activity",
-            analysis_limitations: ["Error occurred during message analysis"]
-        };
-    }
-}
-
-async function generateEvidenceFile(userInfo, request) {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `evidence-report-${request.targetUser.username}-${timestamp}.txt`;
-    
+// Helper function to generate comprehensive user report
+function generateUserReport(userInfo, request, filename) {
     const reportContent = `
 COMPREHENSIVE USER INFORMATION REPORT
 =====================================
