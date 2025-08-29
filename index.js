@@ -271,6 +271,10 @@ const commands = [
                 .setName('remove')
                 .setDescription('Remove your birthday from the system')),
 
+    new SlashCommandBuilder()
+        .setName('anonymous')
+        .setDescription('Send an anonymous message (your identity will be logged for moderation)'),
+
     // Ticketing System Commands
     new SlashCommandBuilder()
         .setName('createticket')
@@ -536,6 +540,8 @@ async function handleButton(interaction) {
             await showAntiNukeConfigModal(interaction);
         } else if (customId === 'warning_system_toggle') {
             await handleWarningSystemToggle(interaction);
+        } else if (customId === 'automod_toggle') {
+            await handleAutomodToggle(interaction);
         } else if (customId === 'warning_configure') {
             await showWarningConfigModal(interaction);
         } else if (customId === 'automod_configure') {
@@ -553,6 +559,8 @@ async function handleButton(interaction) {
             await handlePanicDeactivate(interaction);
         } else if (customId === 'panic_confirm') {
             await handlePanicConfirm(interaction);
+        } else if (customId === 'panic_cancel') {
+            await handlePanicCancel(interaction);
         }
         
         // Advanced settings buttons
@@ -739,27 +747,27 @@ async function handleSetupBack(interaction) {
 }
 
 async function handleSpamButton(interaction) {
-    await interaction.reply({ content: 'Spam button clicked', ephemeral: true });
+    await interaction.reply({ content: '🛡️ Spam protection settings accessed. Use `/config` to modify settings.', flags: [4096] });
 }
 
 async function handleRaidButton(interaction) {
-    await interaction.reply({ content: 'Raid button clicked', ephemeral: true });
+    await interaction.reply({ content: '🛡️ Raid protection settings accessed. Use `/config` to modify settings.', flags: [4096] });
 }
 
 async function handleAutomodButton(interaction) {
-    await interaction.reply({ content: 'Automod button clicked', ephemeral: true });
+    await interaction.reply({ content: '🛡️ AutoMod settings accessed. Use `/config` to modify settings.', flags: [4096] });
 }
 
 async function handlePanicButton(interaction) {
-    await interaction.reply({ content: 'Panic button clicked', ephemeral: true });
+    await interaction.reply({ content: '🚨 Panic mode controls accessed. Use `/panic activate` or `/panic deactivate`.', flags: [4096] });
 }
 
 async function handleAntiNukeButton(interaction) {
-    await interaction.reply({ content: 'Anti-nuke button clicked', ephemeral: true });
+    await interaction.reply({ content: '🛡️ Anti-nuke protection settings accessed. Use `/config` to modify settings.', flags: [4096] });
 }
 
 async function handleWarningSystemButton(interaction) {
-    await interaction.reply({ content: 'Warning system button clicked', ephemeral: true });
+    await interaction.reply({ content: '⚠️ Warning system accessed. Use `/warn` and `/warnings` commands.', flags: [4096] });
 }
 
 async function handleConfigExport(interaction) {
@@ -911,7 +919,7 @@ async function handleSlashCommand(interaction) {
 
     try {
         // Commands that don't require authentication
-        const publicCommands = ['login', 'status', 'afk', 'ascii', 'suggest', 'report', 'birthday', 'userstats', 'countleaderboard', 'counthistory'];
+        const publicCommands = ['login', 'status', 'afk', 'ascii', 'suggest', 'report', 'birthday', 'anonymous', 'userstats', 'countleaderboard', 'counthistory'];
         
         if (!publicCommands.includes(commandName)) {
             // Special check for user command - only primary admin can use it
@@ -1009,6 +1017,10 @@ async function handleSlashCommand(interaction) {
             
             case 'birthday':
                 await handleBirthdayCommand(interaction);
+                break;
+            
+            case 'anonymous':
+                await handleAnonymousCommand(interaction);
                 break;
             
             // Ticketing System Commands
@@ -2259,6 +2271,39 @@ async function handleBirthdayRemove(interaction) {
     }
 }
 
+async function handleAnonymousCommand(interaction) {
+    try {
+        // Create modal for anonymous message input
+        const modal = new ModalBuilder()
+            .setCustomId('anonymous_message_modal')
+            .setTitle('📝 Send Anonymous Message');
+
+        const messageInput = new TextInputBuilder()
+            .setCustomId('anonymous_message')
+            .setLabel('Your Anonymous Message')
+            .setStyle(TextInputStyle.Paragraph)
+            .setPlaceholder('Type your message here... (Your identity will be logged for moderation purposes)')
+            .setMaxLength(2000)
+            .setRequired(true);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(messageInput)
+        );
+
+        await interaction.showModal(modal);
+        
+    } catch (error) {
+        console.error('Anonymous command error:', error);
+        
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ Error')
+            .setDescription('There was an error showing the anonymous message form.')
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+}
+
 // ASCII art generator function with classic style
 function generateAsciiArt(text) {
     const font = {
@@ -2863,6 +2908,22 @@ async function handleWarningSystemToggle(interaction) {
     await interaction.update(warningMenu);
 }
 
+async function handleAutomodToggle(interaction) {
+    try {
+        const guildId = interaction.guild.id;
+        const settings = await database.getModerationSettings(guildId);
+        const newState = !settings.auto_mod;
+        
+        await database.updateModerationSettings(guildId, { auto_mod: newState });
+        
+        const automodMenu = await setupSystem.createAutoModerationMenu(guildId);
+        await interaction.update(automodMenu);
+    } catch (error) {
+        console.error('AutoMod toggle error:', error);
+        await interaction.reply({ content: 'Failed to toggle AutoMod!', flags: [4096] });
+    }
+}
+
 async function handleAdvancedSettingsToggle(interaction, feature) {
     const guildId = interaction.guild.id;
     const settings = await database.getModerationSettings(guildId);
@@ -3181,6 +3242,10 @@ async function handleModal(interaction) {
             case 'create_ticket_modal':
                 await handleCreateTicketModal(interaction);
                 break;
+            
+            case 'anonymous_message_modal':
+                await handleAnonymousMessageModal(interaction);
+                break;
         }
     } catch (error) {
         console.error('Modal error:', error);
@@ -3193,6 +3258,84 @@ async function handleModal(interaction) {
             } catch (replyError) {
                 console.error('Failed to send error response:', replyError);
             }
+        }
+    }
+}
+
+async function handleAnonymousMessageModal(interaction) {
+    try {
+        await interaction.deferReply({ ephemeral: true });
+        
+        const message = interaction.fields.getTextInputValue('anonymous_message');
+        const user = interaction.user;
+        const guild = interaction.guild;
+        const channel = interaction.channel;
+        
+        // Log the anonymous message to the logs channel with actual user information
+        const config = await database.getServerConfig(guild.id);
+        
+        if (config && config.logs_channel_id) {
+            const logsChannel = guild.channels.cache.get(config.logs_channel_id);
+            
+            if (logsChannel) {
+                const logEmbed = new EmbedBuilder()
+                    .setTitle('📝 Anonymous Message Sent')
+                    .setDescription(`**${user.tag}** sent an anonymous message`)
+                    .setColor(0x95A5A6)
+                    .addFields(
+                        { name: '👤 Actual User', value: `${user.tag} (${user.id})`, inline: true },
+                        { name: '📍 Channel', value: `${channel}`, inline: true },
+                        { name: '📝 Message', value: message.length > 1024 ? message.substring(0, 1021) + '...' : message, inline: false },
+                        { name: '🕒 Time', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: false }
+                    )
+                    .setThumbnail(user.displayAvatarURL())
+                    .setTimestamp()
+                    .setFooter({ text: 'Anonymous Message Log' });
+
+                await logsChannel.send({ embeds: [logEmbed] });
+            }
+        }
+        
+        // Send the anonymous message to the current channel
+        const anonymousEmbed = new EmbedBuilder()
+            .setTitle('📝 Anonymous Message')
+            .setDescription(message)
+            .setColor(0x95A5A6)
+            .setTimestamp()
+            .setFooter({ text: 'Sent anonymously' });
+        
+        await channel.send({ embeds: [anonymousEmbed] });
+        
+        // Confirm to the user that their message was sent
+        const confirmEmbed = new EmbedBuilder()
+            .setTitle('✅ Anonymous Message Sent')
+            .setDescription('Your anonymous message has been posted in this channel. Your identity has been logged for moderation purposes.')
+            .setColor(0x2ECC71)
+            .setFooter({ text: 'Thank you for using the anonymous messaging system responsibly!' });
+        
+        await interaction.editReply({ embeds: [confirmEmbed] });
+        
+        // Log to moderation logs
+        await moderationSystem.logModerationAction(
+            guild,
+            user,
+            client.user,
+            'anonymous_message_sent',
+            `Anonymous message sent in ${channel.name}: "${message.length > 100 ? message.substring(0, 97) + '...' : message}"`
+        );
+        
+    } catch (error) {
+        console.error('Anonymous message modal error:', error);
+        
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ Error Sending Anonymous Message')
+            .setDescription('There was an error sending your anonymous message. Please try again.')
+            .setColor(0xE74C3C);
+        
+        if (interaction.deferred) {
+            await interaction.editReply({ embeds: [errorEmbed] });
+        } else {
+            await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
         }
     }
 }
@@ -3914,7 +4057,7 @@ async function handleHelpCommand(interaction) {
             },
             {
                 name: '💡 Utility Commands',
-                value: '`/suggest` - Make a suggestion\n`/report` - Report an issue\n`/afk` - Set yourself as AFK',
+                value: '`/suggest` - Make a suggestion\n`/report` - Report an issue\n`/afk` - Set yourself as AFK\n`/anonymous` - Send an anonymous message',
                 inline: false
             },
             {

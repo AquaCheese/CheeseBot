@@ -11,7 +11,7 @@ class AuthenticationSystem {
         this.setupAttempts = new Map(); // userId -> { attempts, lastAttempt }
         this.maxAttempts = 3;
         this.lockoutDuration = 15 * 60 * 1000; // 15 minutes
-        this.sessionDuration = 72 * 60 * 60 * 1000; // 24 hours
+        this.sessionDuration = 72 * 60 * 60 * 1000; // 72 hours
         this.jwtSecret = process.env.JWT_SECRET || this.generateRandomSecret();
     }
 

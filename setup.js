@@ -694,6 +694,67 @@ class SetupSystem {
         if (score >= 1) return '🟢 Low';
         return '⚪ Minimal';
     }
+
+    // Menu selection handlers
+    async handleSetupMenuSelection(interaction, selectedValue) {
+        try {
+            await interaction.reply({ 
+                content: `⚙️ Setup menu option "${selectedValue}" selected. This feature is being configured.`, 
+                flags: [4096] 
+            });
+        } catch (error) {
+            console.error('Setup menu selection error:', error);
+            await interaction.reply({ content: 'Error processing setup menu selection!', flags: [4096] });
+        }
+    }
+
+    async handleModerationMenuSelection(interaction, selectedValue) {
+        try {
+            await interaction.reply({ 
+                content: `🛡️ Moderation option "${selectedValue}" selected. Use the main setup menu for full configuration.`, 
+                flags: [4096] 
+            });
+        } catch (error) {
+            console.error('Moderation menu selection error:', error);
+            await interaction.reply({ content: 'Error processing moderation menu selection!', flags: [4096] });
+        }
+    }
+
+    async handleAdvancedMenuSelection(interaction, selectedValue) {
+        try {
+            await interaction.reply({ 
+                content: `🔧 Advanced setting "${selectedValue}" selected. Use `/config` command for detailed configuration.`, 
+                flags: [4096] 
+            });
+        } catch (error) {
+            console.error('Advanced menu selection error:', error);
+            await interaction.reply({ content: 'Error processing advanced menu selection!', flags: [4096] });
+        }
+    }
+
+    async handleLogsMenuSelection(interaction, selectedValue) {
+        try {
+            await interaction.reply({ 
+                content: `📊 Logs option "${selectedValue}" selected. Configure logging channels in server settings.`, 
+                flags: [4096] 
+            });
+        } catch (error) {
+            console.error('Logs menu selection error:', error);
+            await interaction.reply({ content: 'Error processing logs menu selection!', flags: [4096] });
+        }
+    }
+
+    async handleTicketMenuSelection(interaction, selectedValue) {
+        try {
+            await interaction.reply({ 
+                content: `🎫 Ticket option "${selectedValue}" selected. Ticket system is available via buttons and commands.`, 
+                flags: [4096] 
+            });
+        } catch (error) {
+            console.error('Ticket menu selection error:', error);
+            await interaction.reply({ content: 'Error processing ticket menu selection!', flags: [4096] });
+        }
+    }
 }
 
 module.exports = SetupSystem;
