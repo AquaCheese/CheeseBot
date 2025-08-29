@@ -47,7 +47,8 @@ class Database {
                 panic_mode BOOLEAN DEFAULT 0,
                 safe_roles TEXT DEFAULT '[]',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                left_at DATETIME
             )
         `);
 
@@ -253,6 +254,85 @@ class Database {
                 expected_number INTEGER,
                 was_correct BOOLEAN,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // Illegal content incidents table for law enforcement reporting
+        this.db.run(`
+            CREATE TABLE IF NOT EXISTS illegal_content_incidents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                incident_id TEXT UNIQUE,
+                guild_id TEXT,
+                guild_name TEXT,
+                channel_id TEXT,
+                channel_name TEXT,
+                user_id TEXT,
+                username TEXT,
+                discriminator TEXT,
+                user_created_at TEXT,
+                account_age_days INTEGER,
+                message_id TEXT,
+                message_content TEXT,
+                attachment_count INTEGER DEFAULT 0,
+                attachment_info TEXT,
+                incident_type TEXT,
+                severity TEXT DEFAULT 'high',
+                reporter_id TEXT,
+                reporter_username TEXT,
+                evidence_preserved BOOLEAN DEFAULT 0,
+                law_enforcement_contacted BOOLEAN DEFAULT 0,
+                discord_reported BOOLEAN DEFAULT 0,
+                ncmec_reported BOOLEAN DEFAULT 0,
+                user_banned BOOLEAN DEFAULT 0,
+                ban_reason TEXT,
+                additional_notes TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // Enhanced moderation logs for detailed incident tracking
+        this.db.run(`
+            CREATE TABLE IF NOT EXISTS enhanced_mod_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                log_id TEXT UNIQUE,
+                guild_id TEXT,
+                action_type TEXT,
+                severity TEXT DEFAULT 'medium',
+                target_user_id TEXT,
+                target_username TEXT,
+                moderator_user_id TEXT,
+                moderator_username TEXT,
+                channel_id TEXT,
+                message_id TEXT,
+                evidence_data TEXT,
+                user_info TEXT,
+                action_taken TEXT,
+                follow_up_required BOOLEAN DEFAULT 0,
+                case_number TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // User info cache for incident reporting
+        this.db.run(`
+            CREATE TABLE IF NOT EXISTS user_info_cache (
+                user_id TEXT,
+                guild_id TEXT,
+                username TEXT,
+                discriminator TEXT,
+                display_name TEXT,
+                avatar_url TEXT,
+                account_created TEXT,
+                first_seen TEXT,
+                last_seen TEXT,
+                message_count INTEGER DEFAULT 0,
+                warning_count INTEGER DEFAULT 0,
+                previous_violations TEXT,
+                risk_level TEXT DEFAULT 'unknown',
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, guild_id)
             )
         `);
 
@@ -958,6 +1038,623 @@ class Database {
                 (err, rows) => {
                     if (err) reject(err);
                     else resolve(rows || []);
+                }
+            );
+        });
+    }
+
+    // ===== CONFIGURATION PERSISTENCE METHODS =====
+
+    async initializeServerDefaults(guildId) {
+        return new Promise((resolve, reject) => {
+            // Create default server config
+            this.db.run(
+                `INSERT OR IGNORE INTO server_configs (guild_id, panic_mode, safe_roles) 
+                 VALUES (?, 0, '[]')`,
+                [guildId],
+                (err) => {
+                    if (err) {
+                        reject(err);
+                        return;
+                    }
+                    
+                    // Create default moderation settings
+                    this.db.run(
+                        `INSERT OR IGNORE INTO moderation_settings (guild_id) VALUES (?)`,
+                        [guildId],
+                        (settingsErr) => {
+                            if (settingsErr) reject(settingsErr);
+                            else resolve();
+                        }
+                    );
+                }
+            );
+        });
+    }
+
+    async markServerAsLeft(guildId) {
+        return new Promise((resolve, reject) => {
+            // Update the server config to mark when the bot left
+            this.db.run(
+                `UPDATE server_configs 
+                 SET updated_at = CURRENT_TIMESTAMP,
+                     left_at = CURRENT_TIMESTAMP
+                 WHERE guild_id = ?`,
+                [guildId],
+                (err) => {
+                    if (err) {
+                        // If no config exists, create one with left_at timestamp
+                        this.db.run(
+                            `INSERT OR IGNORE INTO server_configs (guild_id, panic_mode, safe_roles, left_at) 
+                             VALUES (?, 0, '[]', CURRENT_TIMESTAMP)`,
+                            [guildId],
+                            (insertErr) => {
+                                if (insertErr) reject(insertErr);
+                                else resolve();
+                            }
+                        );
+                    } else {
+                        resolve();
+                    }
+                }
+            );
+        });
+    }
+
+    async updateServerConfig(guildId, updates) {
+        return new Promise((resolve, reject) => {
+            const updateFields = [];
+            const values = [];
+            
+            for (const [key, value] of Object.entries(updates)) {
+                updateFields.push(`${key} = ?`);
+                values.push(value);
+            }
+            
+            if (updateFields.length === 0) {
+                resolve();
+                return;
+            }
+            
+            updateFields.push('updated_at = CURRENT_TIMESTAMP');
+            values.push(guildId);
+            
+            const query = `UPDATE server_configs SET ${updateFields.join(', ')} WHERE guild_id = ?`;
+            
+            this.db.run(query, values, function(err) {
+                if (err) reject(err);
+                else resolve(this.changes);
+            });
+        });
+    }
+
+    async getConfigurationBackup(guildId) {
+        return new Promise((resolve, reject) => {
+            // Get complete configuration including timestamps
+            this.db.get(
+                `SELECT sc.*, ms.* 
+                 FROM server_configs sc 
+                 LEFT JOIN moderation_settings ms ON sc.guild_id = ms.guild_id 
+                 WHERE sc.guild_id = ?`,
+                [guildId],
+                (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                }
+            );
+        });
+    }
+
+    async exportServerConfiguration(guildId) {
+        return new Promise((resolve, reject) => {
+            // Get all configuration data for complete backup/export
+            const configData = {
+                guildId: guildId,
+                exportedAt: new Date().toISOString(),
+                botVersion: require('./package.json').version || '1.0.0',
+                exportType: 'complete_backup'
+            };
+            
+            // Counter for tracking completion
+            let completedQueries = 0;
+            const totalQueries = 12;
+            const errors = [];
+            
+            const checkCompletion = () => {
+                completedQueries++;
+                if (completedQueries === totalQueries) {
+                    if (errors.length > 0) {
+                        console.warn('Some data could not be exported:', errors);
+                    }
+                    resolve(configData);
+                }
+            };
+            
+            // 1. Server configuration
+            this.db.get(
+                'SELECT * FROM server_configs WHERE guild_id = ?',
+                [guildId],
+                (err, row) => {
+                    if (err) errors.push('server_configs: ' + err.message);
+                    else configData.serverConfig = row;
+                    checkCompletion();
+                }
+            );
+            
+            // 2. Moderation settings
+            this.db.get(
+                'SELECT * FROM moderation_settings WHERE guild_id = ?',
+                [guildId],
+                (err, row) => {
+                    if (err) errors.push('moderation_settings: ' + err.message);
+                    else configData.moderationSettings = row;
+                    checkCompletion();
+                }
+            );
+            
+            // 3. Authorized users (global, not guild-specific)
+            this.db.all(
+                'SELECT * FROM authorized_users WHERE is_active = 1',
+                [],
+                (err, rows) => {
+                    if (err) errors.push('authorized_users: ' + err.message);
+                    else configData.authorizedUsers = rows || [];
+                    checkCompletion();
+                }
+            );
+            
+            // 4. User warnings for this guild
+            this.db.all(
+                'SELECT * FROM user_warnings WHERE guild_id = ?',
+                [guildId],
+                (err, rows) => {
+                    if (err) errors.push('user_warnings: ' + err.message);
+                    else configData.userWarnings = rows || [];
+                    checkCompletion();
+                }
+            );
+            
+            // 5. AFK users for this guild
+            this.db.all(
+                'SELECT * FROM afk_users WHERE guild_id = ?',
+                [guildId],
+                (err, rows) => {
+                    if (err) errors.push('afk_users: ' + err.message);
+                    else configData.afkUsers = rows || [];
+                    checkCompletion();
+                }
+            );
+            
+            // 6. Birthday data for this guild
+            this.db.all(
+                'SELECT * FROM birthdays WHERE guild_id = ?',
+                [guildId],
+                (err, rows) => {
+                    if (err) errors.push('birthdays: ' + err.message);
+                    else configData.birthdays = rows || [];
+                    checkCompletion();
+                }
+            );
+            
+            // 7. Tickets for this guild
+            this.db.all(
+                'SELECT * FROM tickets WHERE guild_id = ?',
+                [guildId],
+                (err, rows) => {
+                    if (err) errors.push('tickets: ' + err.message);
+                    else configData.tickets = rows || [];
+                    checkCompletion();
+                }
+            );
+            
+            // 8. Ticket configuration
+            this.db.get(
+                'SELECT * FROM ticket_config WHERE guild_id = ?',
+                [guildId],
+                (err, row) => {
+                    if (err) errors.push('ticket_config: ' + err.message);
+                    else configData.ticketConfig = row;
+                    checkCompletion();
+                }
+            );
+            
+            // 9. Counting channels
+            this.db.all(
+                'SELECT * FROM counting_channels WHERE guild_id = ?',
+                [guildId],
+                (err, rows) => {
+                    if (err) errors.push('counting_channels: ' + err.message);
+                    else configData.countingChannels = rows || [];
+                    checkCompletion();
+                }
+            );
+            
+            // 10. Counting statistics
+            this.db.all(
+                'SELECT * FROM counting_stats WHERE guild_id = ?',
+                [guildId],
+                (err, rows) => {
+                    if (err) errors.push('counting_stats: ' + err.message);
+                    else configData.countingStats = rows || [];
+                    checkCompletion();
+                }
+            );
+            
+            // 11. Counting history (last 100 entries to avoid huge files)
+            this.db.all(
+                'SELECT * FROM counting_history WHERE guild_id = ? ORDER BY timestamp DESC LIMIT 100',
+                [guildId],
+                (err, rows) => {
+                    if (err) errors.push('counting_history: ' + err.message);
+                    else configData.countingHistory = rows || [];
+                    checkCompletion();
+                }
+            );
+            
+            // 12. User info cache for this guild
+            this.db.all(
+                'SELECT * FROM user_info_cache WHERE guild_id = ?',
+                [guildId],
+                (err, rows) => {
+                    if (err) errors.push('user_info_cache: ' + err.message);
+                    else configData.userInfoCache = rows || [];
+                    checkCompletion();
+                }
+            );
+        });
+    }
+
+    async importServerConfiguration(guildId, configData) {
+        return new Promise((resolve, reject) => {
+            this.db.serialize(() => {
+                this.db.run('BEGIN TRANSACTION');
+                
+                try {
+                    // 1. Import server config
+                    if (configData.serverConfig) {
+                        const config = configData.serverConfig;
+                        this.db.run(
+                            `INSERT OR REPLACE INTO server_configs 
+                             (guild_id, admin_channel_id, logs_channel_id, panic_mode, safe_roles, updated_at) 
+                             VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+                            [guildId, config.admin_channel_id, config.logs_channel_id, 
+                             config.panic_mode, config.safe_roles]
+                        );
+                    }
+                    
+                    // 2. Import moderation settings
+                    if (configData.moderationSettings) {
+                        const settings = configData.moderationSettings;
+                        const fields = Object.keys(settings).filter(key => 
+                            key !== 'guild_id' && key !== 'created_at' && key !== 'updated_at'
+                        );
+                        const placeholders = fields.map(() => '?').join(', ');
+                        const values = fields.map(field => settings[field]);
+                        
+                        this.db.run(
+                            `INSERT OR REPLACE INTO moderation_settings 
+                             (guild_id, ${fields.join(', ')}, updated_at) 
+                             VALUES (?, ${placeholders}, CURRENT_TIMESTAMP)`,
+                            [guildId, ...values]
+                        );
+                    }
+                    
+                    // 3. Import authorized users (global data)
+                    if (configData.authorizedUsers && configData.authorizedUsers.length > 0) {
+                        // Clear existing authorized users first
+                        this.db.run('DELETE FROM authorized_users WHERE is_active = 1');
+                        
+                        for (const user of configData.authorizedUsers) {
+                            this.db.run(
+                                `INSERT OR REPLACE INTO authorized_users 
+                                 (user_id, username, granted_by, granted_at, is_active, permissions) 
+                                 VALUES (?, ?, ?, ?, ?, ?)`,
+                                [user.user_id, user.username, user.granted_by, 
+                                 user.granted_at, user.is_active, user.permissions]
+                            );
+                        }
+                    }
+                    
+                    // 4. Import user warnings
+                    if (configData.userWarnings && configData.userWarnings.length > 0) {
+                        // Clear existing warnings for this guild
+                        this.db.run('DELETE FROM user_warnings WHERE guild_id = ?', [guildId]);
+                        
+                        for (const warning of configData.userWarnings) {
+                            this.db.run(
+                                `INSERT INTO user_warnings 
+                                 (user_id, guild_id, warned_by, reason, created_at) 
+                                 VALUES (?, ?, ?, ?, ?)`,
+                                [warning.user_id, guildId, warning.warned_by, 
+                                 warning.reason, warning.created_at]
+                            );
+                        }
+                    }
+                    
+                    // 5. Import AFK users
+                    if (configData.afkUsers && configData.afkUsers.length > 0) {
+                        this.db.run('DELETE FROM afk_users WHERE guild_id = ?', [guildId]);
+                        
+                        for (const afkUser of configData.afkUsers) {
+                            this.db.run(
+                                `INSERT INTO afk_users 
+                                 (user_id, guild_id, reason, until_timestamp, created_at) 
+                                 VALUES (?, ?, ?, ?, ?)`,
+                                [afkUser.user_id, guildId, afkUser.reason, 
+                                 afkUser.until_timestamp, afkUser.created_at]
+                            );
+                        }
+                    }
+                    
+                    // 6. Import birthdays
+                    if (configData.birthdays && configData.birthdays.length > 0) {
+                        this.db.run('DELETE FROM birthdays WHERE guild_id = ?', [guildId]);
+                        
+                        for (const birthday of configData.birthdays) {
+                            this.db.run(
+                                `INSERT INTO birthdays 
+                                 (user_id, guild_id, day, month, created_at, updated_at) 
+                                 VALUES (?, ?, ?, ?, ?, ?)`,
+                                [birthday.user_id, guildId, birthday.day, birthday.month,
+                                 birthday.created_at, birthday.updated_at]
+                            );
+                        }
+                    }
+                    
+                    // 7. Import ticket configuration
+                    if (configData.ticketConfig) {
+                        const config = configData.ticketConfig;
+                        this.db.run(
+                            `INSERT OR REPLACE INTO ticket_config 
+                             (guild_id, ticket_category_id, transcript_channel_id, staff_role_id, ticket_counter, updated_at) 
+                             VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+                            [guildId, config.ticket_category_id, config.transcript_channel_id,
+                             config.staff_role_id, config.ticket_counter]
+                        );
+                    }
+                    
+                    // 8. Import tickets (closed tickets only for history)
+                    if (configData.tickets && configData.tickets.length > 0) {
+                        this.db.run('DELETE FROM tickets WHERE guild_id = ? AND status = "closed"', [guildId]);
+                        
+                        for (const ticket of configData.tickets.filter(t => t.status === 'closed')) {
+                            this.db.run(
+                                `INSERT INTO tickets 
+                                 (guild_id, channel_id, user_id, username, subject, status, priority, 
+                                  claimed_by, claimed_by_username, thread_id, ticket_number, 
+                                  created_at, updated_at, closed_at, close_reason) 
+                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                [guildId, ticket.channel_id, ticket.user_id, ticket.username,
+                                 ticket.subject, ticket.status, ticket.priority, ticket.claimed_by,
+                                 ticket.claimed_by_username, ticket.thread_id, ticket.ticket_number,
+                                 ticket.created_at, ticket.updated_at, ticket.closed_at, ticket.close_reason]
+                            );
+                        }
+                    }
+                    
+                    // 9. Import counting channels
+                    if (configData.countingChannels && configData.countingChannels.length > 0) {
+                        this.db.run('DELETE FROM counting_channels WHERE guild_id = ?', [guildId]);
+                        
+                        for (const channel of configData.countingChannels) {
+                            this.db.run(
+                                `INSERT INTO counting_channels 
+                                 (guild_id, channel_id, current_number, last_user_id, created_at, updated_at) 
+                                 VALUES (?, ?, ?, ?, ?, ?)`,
+                                [guildId, channel.channel_id, channel.current_number,
+                                 channel.last_user_id, channel.created_at, channel.updated_at]
+                            );
+                        }
+                    }
+                    
+                    // 10. Import counting statistics
+                    if (configData.countingStats && configData.countingStats.length > 0) {
+                        this.db.run('DELETE FROM counting_stats WHERE guild_id = ?', [guildId]);
+                        
+                        for (const stat of configData.countingStats) {
+                            this.db.run(
+                                `INSERT INTO counting_stats 
+                                 (user_id, guild_id, correct_count, incorrect_count, highest_number, 
+                                  last_number, streak, best_streak, created_at, updated_at) 
+                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                [stat.user_id, guildId, stat.correct_count, stat.incorrect_count,
+                                 stat.highest_number, stat.last_number, stat.streak, stat.best_streak,
+                                 stat.created_at, stat.updated_at]
+                            );
+                        }
+                    }
+                    
+                    // 11. Import counting history (recent entries only)
+                    if (configData.countingHistory && configData.countingHistory.length > 0) {
+                        this.db.run('DELETE FROM counting_history WHERE guild_id = ?', [guildId]);
+                        
+                        for (const entry of configData.countingHistory) {
+                            this.db.run(
+                                `INSERT INTO counting_history 
+                                 (guild_id, channel_id, user_id, username, number_attempted, 
+                                  expected_number, was_correct, timestamp) 
+                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                                [guildId, entry.channel_id, entry.user_id, entry.username,
+                                 entry.number_attempted, entry.expected_number, entry.was_correct, entry.timestamp]
+                            );
+                        }
+                    }
+                    
+                    // 12. Import user info cache
+                    if (configData.userInfoCache && configData.userInfoCache.length > 0) {
+                        this.db.run('DELETE FROM user_info_cache WHERE guild_id = ?', [guildId]);
+                        
+                        for (const userInfo of configData.userInfoCache) {
+                            this.db.run(
+                                `INSERT INTO user_info_cache 
+                                 (user_id, guild_id, username, discriminator, display_name, avatar_url,
+                                  account_created, first_seen, last_seen, message_count, warning_count,
+                                  previous_violations, risk_level, updated_at) 
+                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                [userInfo.user_id, guildId, userInfo.username, userInfo.discriminator,
+                                 userInfo.display_name, userInfo.avatar_url, userInfo.account_created,
+                                 userInfo.first_seen, userInfo.last_seen, userInfo.message_count,
+                                 userInfo.warning_count, userInfo.previous_violations, userInfo.risk_level,
+                                 userInfo.updated_at]
+                            );
+                        }
+                    }
+                    
+                    this.db.run('COMMIT', (err) => {
+                        if (err) reject(err);
+                        else resolve();
+                    });
+                    
+                } catch (error) {
+                    this.db.run('ROLLBACK');
+                    reject(error);
+                }
+            });
+        });
+    }
+
+    // ===== ILLEGAL CONTENT INCIDENT MANAGEMENT =====
+
+    async createIllegalContentIncident(incidentData) {
+        return new Promise((resolve, reject) => {
+            const incidentId = `INC-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            
+            this.db.run(
+                `INSERT INTO illegal_content_incidents (
+                    incident_id, guild_id, guild_name, channel_id, channel_name,
+                    user_id, username, discriminator, user_created_at, account_age_days,
+                    message_id, message_content, attachment_count, attachment_info,
+                    incident_type, severity, reporter_id, reporter_username,
+                    evidence_preserved, additional_notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    incidentId, incidentData.guild_id, incidentData.guild_name,
+                    incidentData.channel_id, incidentData.channel_name,
+                    incidentData.user_id, incidentData.username, incidentData.discriminator,
+                    incidentData.user_created_at, incidentData.account_age_days,
+                    incidentData.message_id, incidentData.message_content,
+                    incidentData.attachment_count, incidentData.attachment_info,
+                    incidentData.incident_type, incidentData.severity,
+                    incidentData.reporter_id, incidentData.reporter_username,
+                    incidentData.evidence_preserved, incidentData.additional_notes
+                ],
+                function(err) {
+                    if (err) reject(err);
+                    else resolve({ incidentId, dbId: this.lastID });
+                }
+            );
+        });
+    }
+
+    async updateIllegalContentIncident(incidentId, updates) {
+        return new Promise((resolve, reject) => {
+            const updateFields = [];
+            const values = [];
+            
+            for (const [key, value] of Object.entries(updates)) {
+                updateFields.push(`${key} = ?`);
+                values.push(value);
+            }
+            
+            updateFields.push('updated_at = CURRENT_TIMESTAMP');
+            values.push(incidentId);
+            
+            const query = `UPDATE illegal_content_incidents SET ${updateFields.join(', ')} WHERE incident_id = ?`;
+            
+            this.db.run(query, values, function(err) {
+                if (err) reject(err);
+                else resolve(this.changes);
+            });
+        });
+    }
+
+    async getIllegalContentIncident(incidentId) {
+        return new Promise((resolve, reject) => {
+            this.db.get(
+                'SELECT * FROM illegal_content_incidents WHERE incident_id = ?',
+                [incidentId],
+                (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                }
+            );
+        });
+    }
+
+    async getAllIllegalContentIncidents(guildId) {
+        return new Promise((resolve, reject) => {
+            this.db.all(
+                'SELECT * FROM illegal_content_incidents WHERE guild_id = ? ORDER BY created_at DESC',
+                [guildId],
+                (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows || []);
+                }
+            );
+        });
+    }
+
+    // ===== ENHANCED MODERATION LOGGING =====
+
+    async createEnhancedModLog(logData) {
+        return new Promise((resolve, reject) => {
+            const logId = `LOG-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            
+            this.db.run(
+                `INSERT INTO enhanced_mod_logs (
+                    log_id, guild_id, action_type, severity, target_user_id, target_username,
+                    moderator_user_id, moderator_username, channel_id, message_id,
+                    evidence_data, user_info, action_taken, follow_up_required, case_number
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    logId, logData.guild_id, logData.action_type, logData.severity,
+                    logData.target_user_id, logData.target_username,
+                    logData.moderator_user_id, logData.moderator_username,
+                    logData.channel_id, logData.message_id,
+                    JSON.stringify(logData.evidence_data), JSON.stringify(logData.user_info),
+                    logData.action_taken, logData.follow_up_required, logData.case_number
+                ],
+                function(err) {
+                    if (err) reject(err);
+                    else resolve({ logId, dbId: this.lastID });
+                }
+            );
+        });
+    }
+
+    // ===== USER INFO CACHE =====
+
+    async updateUserInfoCache(userId, guildId, userInfo) {
+        return new Promise((resolve, reject) => {
+            this.db.run(
+                `INSERT OR REPLACE INTO user_info_cache (
+                    user_id, guild_id, username, discriminator, display_name,
+                    avatar_url, account_created, first_seen, last_seen,
+                    message_count, warning_count, previous_violations, risk_level, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+                [
+                    userId, guildId, userInfo.username, userInfo.discriminator,
+                    userInfo.display_name, userInfo.avatar_url, userInfo.account_created,
+                    userInfo.first_seen, userInfo.last_seen, userInfo.message_count,
+                    userInfo.warning_count, JSON.stringify(userInfo.previous_violations),
+                    userInfo.risk_level
+                ],
+                function(err) {
+                    if (err) reject(err);
+                    else resolve(this.changes);
+                }
+            );
+        });
+    }
+
+    async getUserInfoCache(userId, guildId) {
+        return new Promise((resolve, reject) => {
+            this.db.get(
+                'SELECT * FROM user_info_cache WHERE user_id = ? AND guild_id = ?',
+                [userId, guildId],
+                (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
                 }
             );
         });
