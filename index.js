@@ -7625,111 +7625,18 @@ function getIncidentStatus(incident) {
     return statuses.length > 0 ? statuses.join(', ') : '⏳ Pending Action';
 }
 
-// Create a simple health check server for hosting platforms
-        const isRegistered = await authSystem.verifyRegisteredUser(interaction.user.id);
-        if (!isRegistered) {
-            const embed = new EmbedBuilder()
-                .setTitle('🔒 Maximum Security Required')
-                .setDescription('Only the registered primary administrator can use this command. This command requires the highest level of security clearance.')
-                .setColor(0xE74C3C)
-                .addFields({
-                    name: '🛡️ Security Notice',
-                    value: 'This command collects sensitive user information for legal/evidence purposes. Access is restricted to verified primary administrators only.',
-                    inline: false
-                });
-            
-            return await interaction.reply({ embeds: [embed], ephemeral: true });
-        }
+function getLegalBasisDescription(basis) {
+    const descriptions = {
+        'law_enforcement': '👮 Law Enforcement Request',
+        'tos_violation': '📋 Terms of Service Violation Investigation',
+        'harassment': '⚠️ Harassment Investigation',
+        'illegal_content': '🔴 Illegal Content Report',
+        'court_order': '⚖️ Court Order/Subpoena'
+    };
+    return descriptions[basis] || basis;
+}
 
-        await interaction.deferReply({ ephemeral: true });
-
-        const targetUser = interaction.options.getUser('target_user');
-        const legalBasis = interaction.options.getString('legal_basis');
-        const caseReference = interaction.options.getString('case_reference') || 'N/A';
-
-        // Step 3: Request 2FA verification
-        const verificationId = Math.random().toString(36).substring(2, 15);
-        
-        const verificationEmbed = new EmbedBuilder()
-            .setTitle('🔐 Two-Factor Authentication Required')
-            .setDescription('**MAXIMUM SECURITY PROTOCOL ACTIVATED**\n\n' +
-                           'To proceed with sensitive data collection, you must provide your authenticator code.')
-            .setColor(0xF39C12)
-            .addFields(
-                {
-                    name: '🎯 Target Information',
-                    value: `**User:** ${targetUser.tag} (${targetUser.id})\n` +
-                           `**Legal Basis:** ${getLegalBasisDescription(legalBasis)}\n` +
-                           `**Case Reference:** ${caseReference}`,
-                    inline: false
-                },
-                {
-                    name: '📱 Authentication Required',
-                    value: 'Enter your 6-digit code from your authenticator app (Authy, Google Authenticator, etc.)',
-                    inline: false
-                },
-                {
-                    name: '⚠️ Security Warning',
-                    value: 'This action will be logged and audited. Only proceed if you have legitimate legal grounds for data collection.',
-                    inline: false
-                }
-            )
-            .setTimestamp()
-            .setFooter({ text: `Verification ID: ${verificationId}` });
-
-        const modal = new ModalBuilder()
-            .setCustomId(`getinfo_2fa_${verificationId}`)
-            .setTitle('🔐 Maximum Security Verification');
-
-        const codeInput = new TextInputBuilder()
-            .setCustomId('auth_code')
-            .setLabel('Authenticator Code')
-            .setStyle(TextInputStyle.Short)
-            .setMinLength(6)
-            .setMaxLength(6)
-            .setPlaceholder('Enter 6-digit code from your authenticator app')
-            .setRequired(true);
-
-        const reasonInput = new TextInputBuilder()
-            .setCustomId('collection_reason')
-            .setLabel('Detailed Reason for Data Collection')
-            .setStyle(TextInputStyle.Paragraph)
-            .setMinLength(20)
-            .setMaxLength(500)
-            .setPlaceholder('Provide detailed justification for collecting this user\'s information...')
-            .setRequired(true);
-
-        const row1 = new ActionRowBuilder().addComponents(codeInput);
-        const row2 = new ActionRowBuilder().addComponents(reasonInput);
-        modal.addComponents(row1, row2);
-
-        // Store the request data for verification
-        global.getInfoRequests = global.getInfoRequests || new Map();
-        global.getInfoRequests.set(verificationId, {
-            userId: interaction.user.id,
-            targetUser: targetUser,
-            legalBasis: legalBasis,
-            caseReference: caseReference,
-            timestamp: Date.now(),
-            guildId: interaction.guild.id
-        });
-
-        await interaction.editReply({ embeds: [verificationEmbed] });
-        await interaction.followUp({ 
-            content: '👆 **Click this message and then use the button below to open the verification modal.**',
-            components: [new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`open_getinfo_modal_${verificationId}`)
-                    .setLabel('🔐 Enter Authentication Code')
-                    .setStyle(ButtonStyle.Primary)
-            )],
-            ephemeral: true 
-        });
-
-
-
-
-
+// Helper function to generate comprehensive user report
 // Helper function to generate comprehensive user report
 function generateUserReport(userInfo, request, filename) {
     const reportContent = `
