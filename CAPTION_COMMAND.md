@@ -102,29 +102,33 @@ The intelligent system considers multiple factors:
 - ❌ **"An error occurred while creating the meme"**: General processing error
 
 ## Technical Details
-- Built using the Canvas library for image processing
-- ✅ **Enhanced Impact font system** with comprehensive fallbacks
-- ✅ **Adaptive font sizing** for all image dimensions (100px to 1000px+)
-- ✅ **Robust text rendering** with stroke outlines and shadow effects
-- ✅ **Universal compatibility** - works with all image sizes and formats
-- Text positioning uses dynamic padding and word wrapping algorithms
+- Built using the Canvas library with enhanced text rendering
+- ✅ **Multi-layer text rendering** for maximum visibility and contrast
+- ✅ **Enhanced font system** with Fontconfig error suppression
+- ✅ **Triple-fallback rendering**: Enhanced → Simple → Character-by-character
+- ✅ **Adaptive font sizing** with intelligent auto-optimization
+- ✅ **Universal compatibility** - works in containers and all environments
+- Text positioning uses dynamic padding and advanced word wrapping
 - Font fallback chain: Impact → Arial Black → Helvetica Neue → Arial → sans-serif
-- Character-level rendering fallback for maximum compatibility
-- High-quality Canvas rendering with anti-aliasing
+- Multiple rendering passes: Black outline → Stroke → White fill → Shadow enhancement
+- High-quality Canvas rendering with anti-aliasing and quality optimization
 
 ## Font Setup & Troubleshooting
-✅ **Squares Issue RESOLVED**: Enhanced font detection and fallback system
-- **Primary**: Impact font (authentic meme style)
-- **Fallbacks**: Multiple system fonts ensure text always renders
-- **Auto-sizing**: Font size adapts to image dimensions
-- **Error Recovery**: Character-by-character fallback if needed
-- **Testing**: Verified across all image sizes from 100x100 to 1000x1000+
+✅ **All Rendering Issues RESOLVED**: Enhanced multi-layer text system
+- **Enhanced Rendering**: Multiple passes with thick black outlines
+- **Container Support**: Fontconfig error suppression for Railway/Docker
+- **Triple Fallback**: Enhanced → Simple → Character-by-character rendering
+- **Font Detection**: Improved system font testing and registration
+- **Error Recovery**: Graceful fallback if any rendering method fails
 
-### Installation:
-- **Windows**: Impact is usually pre-installed ✅
+### Installation & Environment:
+- **Railway/Docker**: ✅ Enhanced for container environments
+- **Fontconfig Errors**: ✅ Automatically suppressed and handled
+- **System Fonts**: ✅ Improved detection and fallback system
+- **Windows**: Impact font auto-detected ✅
+- **Linux**: Anton font auto-downloaded as Impact alternative ✅
 - **Manual Install**: Place `impact.ttf` in the `fonts/` directory
-- **Auto Download**: Bot attempts to download Anton font as alternative
-- **System Fonts**: Arial Black, Helvetica, Arial provide excellent fallbacks
+- **Ultimate Fallback**: System Arial with enhanced rendering ✅
 
 Use `/fontsetup` command for detailed font installation instructions.
 

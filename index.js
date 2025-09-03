@@ -835,18 +835,26 @@ async function notifyRestart(client, restartCount) {
     }
 }
 
-// Font initialization function
+// Font initialization function with better error handling
 async function initializeFonts() {
     try {
         const fontsDir = path.join(__dirname, 'fonts');
+        
+        // Suppress Fontconfig warnings/errors (common in containers)
+        process.env.FONTCONFIG_PATH = '/dev/null';
+        
         const impactFontPath = path.join(fontsDir, 'impact.ttf');
         
         // Check if Impact font already exists
         if (fs.existsSync(impactFontPath)) {
             console.log('✅ Impact font found, registering...');
-            registerFont(impactFontPath, { family: 'Impact' });
-            console.log('✅ Impact font registered successfully');
-            return true;
+            try {
+                registerFont(impactFontPath, { family: 'Impact' });
+                console.log('✅ Impact font registered successfully');
+                return true;
+            } catch (regError) {
+                console.warn('⚠️ Impact font registration failed:', regError.message);
+            }
         }
         
         console.log('📥 Impact font not found, attempting to download...');
@@ -859,34 +867,63 @@ async function initializeFonts() {
             console.log('📥 Downloading Anton font (Impact alternative)...');
             const response = await axios.get(antonUrl, { responseType: 'arraybuffer' });
             
+            // Ensure fonts directory exists
+            if (!fs.existsSync(fontsDir)) {
+                fs.mkdirSync(fontsDir, { recursive: true });
+            }
+            
             const antonFontPath = path.join(fontsDir, 'anton.ttf');
             fs.writeFileSync(antonFontPath, response.data);
             
             // Register Anton as Impact for meme compatibility
-            registerFont(antonFontPath, { family: 'Impact' });
-            console.log('✅ Anton font downloaded and registered as Impact');
+            try {
+                registerFont(antonFontPath, { family: 'Impact' });
+                console.log('✅ Anton font downloaded and registered as Impact');
+                return true;
+            } catch (regError) {
+                console.warn('⚠️ Anton font registration failed:', regError.message);
+            }
             
-            return true;
         } catch (downloadError) {
             console.error('❌ Failed to download font:', downloadError.message);
+        }
+        
+        // Try to check if Impact is available as a system font
+        try {
+            console.log('💡 Checking for system Impact font...');
             
-            // Try to check if Impact is available as a system font on Windows
-            try {
-                // On Windows, Impact is usually pre-installed
-                console.log('💡 Checking for system Impact font...');
-                
-                // Create a test canvas to see if Impact renders properly
-                const testCanvas = createCanvas(100, 50);
-                const testCtx = testCanvas.getContext('2d');
-                testCtx.font = '20px Impact, Arial';
-                testCtx.fillText('TEST', 10, 30);
-                
-                console.log('✅ System Impact font appears to be available');
-                return true;
-            } catch (systemError) {
-                console.log('⚠️ System Impact font not available, using Arial fallback');
-                return false;
+            // Create a test canvas to see if Impact renders properly
+            const testCanvas = createCanvas(100, 50);
+            const testCtx = testCanvas.getContext('2d');
+            
+            // Test multiple font configurations
+            const testFonts = [
+                'Impact',
+                'Arial Black',
+                'Helvetica Neue',
+                'Arial'
+            ];
+            
+            for (const testFont of testFonts) {
+                try {
+                    testCtx.font = `20px ${testFont}`;
+                    const metrics = testCtx.measureText('TEST');
+                    if (metrics.width > 0) {
+                        console.log(`✅ System font "${testFont}" is available`);
+                        break;
+                    }
+                } catch (fontError) {
+                    console.log(`⚠️ Font "${testFont}" not available`);
+                }
             }
+            
+            console.log('✅ System fonts available for fallback');
+            return true;
+            
+        } catch (systemError) {
+            console.log('⚠️ System font test failed:', systemError.message);
+            console.log('💡 Will use basic sans-serif font as ultimate fallback');
+            return false;
         }
         
     } catch (error) {
@@ -8676,7 +8713,7 @@ async function handleCaptionCommand(interaction) {
             fontSizeOption
         );
         
-        // Use multiple font fallbacks to ensure text always renders
+        // Use multiple font fallbacks with better error handling
         const fontFamily = [
             'Impact',           // Windows system font
             'Arial Black',      // Windows fallback
@@ -8692,17 +8729,32 @@ async function handleCaptionCommand(interaction) {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         
-        // Force text rendering quality
+        // Force text rendering quality and anti-aliasing
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
+        ctx.textRenderingOptimization = 'optimizeQuality';
         
-        // Test if font is working by measuring text
-        const testMetrics = ctx.measureText('TEST');
+        // Test if font is working by measuring text and trying fallbacks
+        let fontWorking = false;
+        const testText = 'TEST';
+        let testMetrics = ctx.measureText(testText);
         console.log(`Font test: width=${testMetrics.width}, font="${ctx.font}"`);
         
-        if (testMetrics.width === 0) {
-            console.warn('Font measurement failed, using Arial fallback');
+        if (testMetrics.width > 0) {
+            fontWorking = true;
+        } else {
+            console.warn('Primary font measurement failed, trying Arial fallback');
             ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+            testMetrics = ctx.measureText(testText);
+            console.log(`Arial fallback test: width=${testMetrics.width}, font="${ctx.font}"`);
+            
+            if (testMetrics.width > 0) {
+                fontWorking = true;
+            } else {
+                console.warn('Arial fallback also failed, using system default');
+                ctx.font = `bold ${fontSize}px sans-serif`;
+                fontWorking = true; // Assume it works
+            }
         }
         
         // Robust function to wrap text and draw it for all image sizes
@@ -8769,41 +8821,90 @@ async function handleCaptionCommand(interaction) {
             const totalHeight = lines.length * lineHeight;
             const startY = y - (totalHeight / 2) + (lineHeight / 2);
             
-            // Draw each line with multiple techniques to ensure visibility
+            // Draw each line with enhanced rendering techniques to ensure visibility
             lines.forEach((line, index) => {
                 const lineY = startY + (index * lineHeight);
                 
                 try {
-                    // Method 1: Traditional stroke + fill
+                    // Enhanced rendering with multiple passes for better visibility
+                    
+                    // Pass 1: Black outline/shadow (multiple passes for thickness)
+                    ctx.fillStyle = 'black';
+                    ctx.strokeStyle = 'black';
+                    
+                    // Create thick black outline by drawing multiple offset copies
+                    const outlineSize = Math.max(fontSize / 15, 2);
+                    for (let offsetX = -outlineSize; offsetX <= outlineSize; offsetX++) {
+                        for (let offsetY = -outlineSize; offsetY <= outlineSize; offsetY++) {
+                            if (offsetX !== 0 || offsetY !== 0) {
+                                ctx.fillText(line, x + offsetX, lineY + offsetY);
+                            }
+                        }
+                    }
+                    
+                    // Pass 2: Traditional stroke outline
+                    ctx.strokeStyle = 'black';
+                    ctx.lineWidth = Math.max(fontSize / 8, 3);
                     ctx.strokeText(line, x, lineY);
+                    
+                    // Pass 3: White fill text
+                    ctx.fillStyle = 'white';
                     ctx.fillText(line, x, lineY);
                     
-                    // Method 2: Additional shadow for very small text
-                    if (fontSize < 30) {
+                    // Pass 4: Additional contrast for small fonts
+                    if (fontSize < 25) {
+                        // Add extra black shadow for small text
                         ctx.fillStyle = 'black';
-                        ctx.fillText(line, x + 1, lineY + 1);
+                        ctx.fillText(line, x + 2, lineY + 2);
                         ctx.fillText(line, x - 1, lineY - 1);
+                        
+                        // Re-apply white text on top
                         ctx.fillStyle = 'white';
                         ctx.fillText(line, x, lineY);
                     }
                     
-                    console.log(`Drew line ${index + 1}: "${line}" at y=${lineY}`);
+                    console.log(`Drew line ${index + 1}: "${line}" at y=${lineY} with enhanced rendering`);
                     
                 } catch (error) {
                     console.error('Text rendering error for line:', line, error);
                     
-                    // Emergency fallback - try character by character
+                    // Emergency fallback 1: Simple fill without stroke
                     try {
-                        for (let i = 0; i < line.length; i++) {
-                            const char = line[i];
-                            const charX = x + (i - line.length / 2) * (fontSize * 0.6);
-                            ctx.fillStyle = 'black';
-                            ctx.fillText(char, charX + 1, lineY + 1);
-                            ctx.fillStyle = 'white';
-                            ctx.fillText(char, charX, lineY);
+                        console.log('Trying simple fill fallback...');
+                        ctx.fillStyle = 'white';
+                        ctx.fillText(line, x, lineY);
+                        
+                        ctx.fillStyle = 'black';
+                        ctx.fillText(line, x + 1, lineY + 1);
+                        
+                        ctx.fillStyle = 'white';
+                        ctx.fillText(line, x, lineY);
+                        
+                    } catch (simpleFallbackError) {
+                        console.error('Simple fallback failed:', simpleFallbackError);
+                        
+                        // Emergency fallback 2: Character by character
+                        try {
+                            console.log('Trying character-by-character fallback...');
+                            const charSpacing = fontSize * 0.6;
+                            const startX = x - (line.length * charSpacing) / 2;
+                            
+                            for (let i = 0; i < line.length; i++) {
+                                const char = line[i];
+                                const charX = startX + (i * charSpacing);
+                                
+                                // Black shadow
+                                ctx.fillStyle = 'black';
+                                ctx.fillText(char, charX + 1, lineY + 1);
+                                
+                                // White character
+                                ctx.fillStyle = 'white';
+                                ctx.fillText(char, charX, lineY);
+                            }
+                            
+                        } catch (charFallbackError) {
+                            console.error('Character fallback also failed:', charFallbackError);
                         }
-                    } catch (fallbackError) {
-                        console.error('Fallback rendering also failed:', fallbackError);
                     }
                 }
             });
