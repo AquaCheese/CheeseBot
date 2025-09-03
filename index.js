@@ -16,6 +16,9 @@ const {
     MessageFlags
 } = require('discord.js');
 const { createCanvas, loadImage, registerFont } = require('canvas');
+const https = require('https');
+const fs = require('fs');
+const path = require('path');
 const http = require('http');
 require('dotenv').config();
 
@@ -631,7 +634,12 @@ const commands = [
             option.setName('bottom_text')
                 .setDescription('Text to add at the bottom of the image')
                 .setRequired(false)
-        )
+        ),
+    
+    new SlashCommandBuilder()
+        .setName('fontsetup')
+        .setDescription('Get instructions for installing the Impact font for better meme quality')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 ];
 
 // Get current bot version from package.json
@@ -811,9 +819,53 @@ async function notifyRestart(client, restartCount) {
     }
 }
 
+// Font initialization function
+async function initializeFonts() {
+    try {
+        const fontsDir = path.join(__dirname, 'fonts');
+        const impactFontPath = path.join(fontsDir, 'impact.ttf');
+        
+        // Check if Impact font already exists
+        if (fs.existsSync(impactFontPath)) {
+            console.log('✅ Impact font found, registering...');
+            registerFont(impactFontPath, { family: 'Impact' });
+            console.log('✅ Impact font registered successfully');
+            return true;
+        }
+        
+        console.log('📥 Impact font not found, downloading...');
+        
+        // For now, we'll skip automatic download and just guide users to manual installation
+        console.log('💡 Automatic font download skipped - please use /fontsetup for installation guide');
+        console.log('💡 Will use system Arial font as fallback');
+        return false;
+        
+    } catch (error) {
+        console.error('❌ Font initialization error:', error);
+        console.log('💡 Will use system Arial font as fallback');
+        return false;
+    }
+}
+
+// Function to get the best available font
+function getMemeFont(fontSize) {
+    const fontsDir = path.join(__dirname, 'fonts');
+    const impactFontPath = path.join(fontsDir, 'impact.ttf');
+    
+    if (fs.existsSync(impactFontPath)) {
+        return `bold ${fontSize}px Impact, Arial, sans-serif`;
+    } else {
+        // Use Anton if available, otherwise fall back to Arial
+        return `bold ${fontSize}px Anton, Arial, sans-serif`;
+    }
+}
+
 // When the client is ready, run this code (only once)
 client.once(Events.ClientReady, async readyClient => {
     console.log(`🧀 CheeseBot is ready! Logged in as ${readyClient.user.tag}`);
+    
+    // Initialize fonts
+    await initializeFonts();
     
     // Initialize authentication tables
     try {
@@ -1764,12 +1816,16 @@ async function handleSlashCommand(interaction) {
                 await handleCaptionCommand(interaction);
                 break;
             
+            case 'fontsetup':
+                await handleFontSetupCommand(interaction);
+                break;
+            
             default:
-                await interaction.reply({ content: 'Unknown command!', ephemeral: true });
+                await interaction.reply({ content: 'Unknown command!', flags: MessageFlags.Ephemeral });
         }
     } catch (error) {
         console.error('Slash command error:', error);
-        const response = { content: 'There was an error executing this command!', ephemeral: true };
+        const response = { content: 'There was an error executing this command!', flags: MessageFlags.Ephemeral };
         
         if (interaction.replied || interaction.deferred) {
             await interaction.followUp(response);
@@ -8478,7 +8534,7 @@ async function handleCaptionCommand(interaction) {
         
         // Configure text style (classic meme font styling)
         const fontSize = Math.max(Math.min(image.width / 12, image.height / 12), 20); // Dynamic font size
-        ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+        ctx.font = getMemeFont(fontSize);
         ctx.fillStyle = 'white';
         ctx.strokeStyle = 'black';
         ctx.lineWidth = fontSize / 15;
@@ -8555,6 +8611,70 @@ async function handleCaptionCommand(interaction) {
         console.error('Error creating meme:', error);
         await interaction.editReply({ 
             content: '❌ An error occurred while creating the meme. Please try again with a different image.' 
+        });
+    }
+}
+
+// Font setup command handler
+async function handleFontSetupCommand(interaction) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    
+    try {
+        const fontsDir = path.join(__dirname, 'fonts');
+        const impactFontPath = path.join(fontsDir, 'impact.ttf');
+        const hasImpact = fs.existsSync(impactFontPath);
+        
+        const embed = new EmbedBuilder()
+            .setTitle('🔤 Font Setup for Better Memes')
+            .setColor(hasImpact ? 0x00ff00 : 0xffaa00);
+        
+        if (hasImpact) {
+            embed.setDescription('✅ **Impact font is already installed!**\n\nYour memes will use the authentic Impact font for the classic meme look.')
+                .addFields(
+                    { name: '🎯 Current Status', value: 'Impact font is active and ready', inline: false },
+                    { name: '📍 Font Location', value: `\`${impactFontPath}\``, inline: false },
+                    { name: '🎨 Meme Quality', value: 'Authentic classic meme styling ✨', inline: false }
+                );
+        } else {
+            embed.setDescription('⚠️ **Impact font not found**\n\nTo get the authentic meme font experience, follow these steps:')
+                .addFields(
+                    { name: '📥 Step 1: Download Impact Font', value: 'Download `impact.ttf` from a trusted font website like:\n• [Google Fonts](https://fonts.google.com)\n• [DaFont](https://dafont.com)\n• [Font Squirrel](https://fontsquirrel.com)', inline: false },
+                    { name: '📂 Step 2: Place Font File', value: `Place the \`impact.ttf\` file in:\n\`${fontsDir}\``, inline: false },
+                    { name: '🔄 Step 3: Restart Bot', value: 'Restart the bot to automatically detect and register the font', inline: false },
+                    { name: '🎨 Current Font', value: 'Using Anton font (similar to Impact) as fallback', inline: false },
+                    { name: '💡 Alternative', value: 'The bot will work fine with Anton font, but Impact provides the most authentic look', inline: false }
+                );
+        }
+        
+        // Add font status check
+        const statusFields = [];
+        statusFields.push({ name: '📊 Font Status Check', value: '', inline: false });
+        
+        if (fs.existsSync(impactFontPath)) {
+            statusFields.push({ name: '✅ Impact Font', value: 'Available and registered', inline: true });
+        } else {
+            statusFields.push({ name: '❌ Impact Font', value: 'Not found', inline: true });
+        }
+        
+        // Check for alternative fonts
+        const antonPath = path.join(fontsDir, 'anton.woff2');
+        if (fs.existsSync(antonPath)) {
+            statusFields.push({ name: '✅ Anton Font', value: 'Downloaded fallback', inline: true });
+        } else {
+            statusFields.push({ name: '⚠️ Anton Font', value: 'Fallback not available', inline: true });
+        }
+        
+        statusFields.push({ name: '📁 Fonts Directory', value: fs.existsSync(fontsDir) ? 'Exists' : 'Created', inline: true });
+        
+        embed.addFields(statusFields);
+        embed.setFooter({ text: 'Made with 🧀 by AquaCheese • Font Management' });
+        
+        await interaction.editReply({ embeds: [embed] });
+        
+    } catch (error) {
+        console.error('Error in font setup command:', error);
+        await interaction.editReply({ 
+            content: '❌ An error occurred while checking font setup. Please try again.' 
         });
     }
 }

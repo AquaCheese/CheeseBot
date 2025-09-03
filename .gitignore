@@ -9,6 +9,12 @@ node_modules/
 *.sqlite
 *.sqlite3
 
+# Font files (may have licensing restrictions)
+fonts/*.ttf
+fonts/*.otf
+fonts/*.woff
+fonts/*.woff2
+
 # Logs
 logs/
 *.log
