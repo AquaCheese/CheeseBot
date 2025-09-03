@@ -8132,39 +8132,37 @@ async function getChannelIdFromConfig(guildId) {
 }
 
 async function fetchYouTubeData(channelId, type = 'recent') {
-    // Note: This is a placeholder for YouTube API integration
-    // In a real implementation, you would use the YouTube Data API v3
-    // For now, we'll return mock data structure
-    
-    if (!process.env.YOUTUBE_API_KEY) {
-        throw new Error('YouTube API key not configured');
-    }
+    // For now, return placeholder data since YouTube API is not yet implemented
+    // This will be replaced with actual YouTube API calls in the future
     
     try {
-        // This would be replaced with actual YouTube API calls
+        // Generate appropriate placeholder data based on the channel
+        const channelName = channelId.includes('@') ? channelId.replace('@', '') : 'Unknown Channel';
+        const channelUrl = channelId.includes('@') ? `https://www.youtube.com/${channelId}` : `https://www.youtube.com/channel/${channelId}`;
+        
         const mockData = {
             recent: {
-                title: 'Latest Video Title',
-                description: 'Video description here...',
-                url: 'https://youtube.com/watch?v=example',
-                thumbnail: 'https://img.youtube.com/vi/example/maxresdefault.jpg',
+                title: `Latest video from ${channelName}`,
+                description: `Check out the most recent content from ${channelName}! Click the link below to visit their channel and see their latest videos.`,
+                url: channelUrl,
+                thumbnail: 'https://via.placeholder.com/480x360/FF0000/FFFFFF?text=YouTube',
                 publishedAt: new Date().toISOString(),
-                views: '1,234',
-                likes: '567'
+                views: 'Visit channel',
+                likes: 'for details'
             },
             channel: {
-                name: 'Channel Name',
-                description: 'Channel description...',
-                url: 'https://youtube.com/@channel',
-                thumbnail: 'https://yt3.ggpht.com/example/avatar.jpg',
-                subscribers: '10K',
-                videos: '234'
+                name: channelName,
+                description: `Welcome to ${channelName}! Visit their channel to see all their amazing content and subscribe for updates.`,
+                url: channelUrl,
+                thumbnail: 'https://via.placeholder.com/200x200/FF0000/FFFFFF?text=YT',
+                subscribers: 'Visit channel',
+                videos: 'for stats'
             }
         };
         
         return mockData[type] || mockData.recent;
     } catch (error) {
-        console.error('YouTube API error:', error);
+        console.error('YouTube placeholder data error:', error);
         throw error;
     }
 }
@@ -8189,7 +8187,7 @@ async function handleYouTubeRecent(interaction) {
         
         const embed = new EmbedBuilder()
             .setTitle('📺 Latest Video')
-            .setDescription(videoData.description.substring(0, 200) + '...')
+            .setDescription(videoData.description + '\n\n*Note: YouTube API integration coming soon! For now, visit the channel directly.*')
             .setURL(videoData.url)
             .setThumbnail(videoData.thumbnail)
             .addFields(
@@ -8237,7 +8235,7 @@ async function handleYouTubeChannel(interaction) {
         
         const embed = new EmbedBuilder()
             .setTitle('📺 YouTube Channel')
-            .setDescription(channelData.description.substring(0, 200) + '...')
+            .setDescription(channelData.description + '\n\n*Note: YouTube API integration coming soon! Click the link to visit the channel.*')
             .setURL(channelData.url)
             .setThumbnail(channelData.thumbnail)
             .addFields(
@@ -8271,13 +8269,28 @@ async function handleYouTubeSetup(interaction) {
     
     // Extract channel ID or handle from URL
     let channelId = null;
+    
     if (channelUrl.includes('@')) {
-        // Handle format: @username
-        channelId = channelUrl.replace('https://www.youtube.com/', '').replace('@', '');
+        // Handle format: @username or https://www.youtube.com/@username
+        if (channelUrl.startsWith('https://')) {
+            channelId = channelUrl.split('@')[1];
+        } else if (channelUrl.startsWith('@')) {
+            channelId = channelUrl;
+        } else {
+            channelId = '@' + channelUrl;
+        }
     } else if (channelUrl.includes('/channel/')) {
-        // Channel ID format
+        // Channel ID format: https://www.youtube.com/channel/UCxxxxx
         channelId = channelUrl.split('/channel/')[1];
+    } else if (channelUrl.includes('youtube.com/c/')) {
+        // Custom URL format: https://www.youtube.com/c/channelname
+        channelId = '@' + channelUrl.split('/c/')[1];
+    } else {
+        // Assume it's just a channel name
+        channelId = channelUrl.startsWith('@') ? channelUrl : '@' + channelUrl;
     }
+    
+    console.log(`🔍 Extracted channel ID: "${channelId}" from URL: "${channelUrl}"`);
     
     if (!channelId) {
         const embed = new EmbedBuilder()

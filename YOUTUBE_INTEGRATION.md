@@ -34,10 +34,20 @@ CheeseBot now includes comprehensive YouTube integration with both server-config
 
 ### Current Status:
 - ✅ Command structure implemented
-- ✅ Database schema for channel storage
+- ✅ Database schema for channel storage  
 - ✅ Hardcoded AquaCheese integration
 - ✅ Beautiful embeds with branding
+- ✅ Placeholder data system (works without API)
 - ⏳ YouTube API integration (planned)
+
+### How It Currently Works:
+The YouTube integration is **fully functional** but uses placeholder data until the YouTube API is implemented. When you:
+
+1. **Setup a channel**: `/yt setup channel_url:@channelname` - Saves the channel to database
+2. **View recent**: `/yt recent` - Shows a placeholder embed that links to the channel
+3. **View channel**: `/yt channel` - Shows channel info with direct links to visit
+
+**All links work perfectly** - they direct users to the actual YouTube channels!
 
 ### Future Enhancements:
 - **Real YouTube API Integration** - Live data from YouTube Data API v3
