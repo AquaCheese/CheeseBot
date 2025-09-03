@@ -8532,9 +8532,9 @@ async function handleAquaCheeseChannel(interaction) {
 
 // Caption command handler
 async function handleCaptionCommand(interaction) {
-    await interaction.deferReply();
-    
     try {
+        await interaction.deferReply();
+        
         const attachment = interaction.options.getAttachment('image');
         const topText = interaction.options.getString('top_text') || '';
         const bottomText = interaction.options.getString('bottom_text') || '';
@@ -8559,8 +8559,11 @@ async function handleCaptionCommand(interaction) {
             return await interaction.editReply({ content: '❌ Please provide at least top text or bottom text for the meme.' });
         }
         
+        console.log(`Processing meme: ${attachment.name} (${attachment.size} bytes)`);
+        
         // Load the image
         const image = await loadImage(attachment.url);
+        console.log(`Image loaded: ${image.width}x${image.height}`);
         
         // Create canvas with same dimensions as the image
         const canvas = createCanvas(image.width, image.height);
@@ -8576,8 +8579,8 @@ async function handleCaptionCommand(interaction) {
         
         console.log(`Image size: ${image.width}x${image.height}, Font size: ${fontSize}`);
         
-        // Use Impact font for authentic meme styling
-        ctx.font = getMemeFont(fontSize);
+        // Use Impact font for authentic meme styling - simplified approach
+        ctx.font = `bold ${fontSize}px Impact, "Arial Black", Arial, sans-serif`;
         ctx.fillStyle = 'white';
         ctx.strokeStyle = 'black';
         ctx.lineWidth = Math.max(fontSize / 15, 3); // Ensure minimum stroke width of 3px
@@ -8585,31 +8588,25 @@ async function handleCaptionCommand(interaction) {
         ctx.textBaseline = 'middle';
         
         // Set text rendering quality
-        ctx.textRenderingOptimization = 'optimizeQuality';
+        if (ctx.textRenderingOptimization) {
+            ctx.textRenderingOptimization = 'optimizeQuality';
+        }
         ctx.imageSmoothingEnabled = true;
         
-        // Function to wrap text and draw it
+        // Simplified function to wrap text and draw it quickly
         function drawMemeText(text, x, y, maxWidth) {
             // Ensure text is properly encoded and sanitized
-            const sanitizedText = text.toString().trim();
+            const sanitizedText = text.toString().trim().toUpperCase();
             if (!sanitizedText) return;
             
-            const words = sanitizedText.toUpperCase().split(/\s+/);
+            const words = sanitizedText.split(/\s+/);
             const lines = [];
             let currentLine = '';
             
+            // Simple text wrapping
             for (const word of words) {
                 const testLine = currentLine + (currentLine ? ' ' : '') + word;
-                
-                // Test text width measurement
-                let metrics;
-                try {
-                    metrics = ctx.measureText(testLine);
-                } catch (error) {
-                    console.error('Text measurement error:', error);
-                    // Fallback to character-based estimation
-                    metrics = { width: testLine.length * fontSize * 0.6 };
-                }
+                const metrics = ctx.measureText(testLine);
                 
                 if (metrics.width > maxWidth && currentLine) {
                     lines.push(currentLine);
@@ -8623,36 +8620,18 @@ async function handleCaptionCommand(interaction) {
                 lines.push(currentLine);
             }
             
-            // Draw each line with better error handling
+            // Draw each line with simplified outline
             const lineHeight = fontSize * 1.2;
             const startY = y - ((lines.length - 1) * lineHeight) / 2;
             
             lines.forEach((line, index) => {
                 const lineY = startY + (index * lineHeight);
                 
-                try {
-                    // Calculate outline thickness based on font size
-                    const outlineThickness = Math.max(Math.floor(fontSize / 16), 2);
-                    
-                    // Draw text stroke (outline) with multiple passes for better visibility
-                    for (let dx = -outlineThickness; dx <= outlineThickness; dx++) {
-                        for (let dy = -outlineThickness; dy <= outlineThickness; dy++) {
-                            if (dx !== 0 || dy !== 0) {
-                                ctx.fillStyle = 'black';
-                                ctx.fillText(line, x + dx, lineY + dy);
-                            }
-                        }
-                    }
-                    
-                    // Draw main text
-                    ctx.fillStyle = 'white';
-                    ctx.fillText(line, x, lineY);
-                } catch (error) {
-                    console.error('Text rendering error:', error);
-                    // Fallback: try simpler rendering
-                    ctx.fillStyle = 'white';
-                    ctx.fillText(line, x, lineY);
-                }
+                // Draw text outline with single stroke
+                ctx.strokeText(line, x, lineY);
+                
+                // Draw main text
+                ctx.fillText(line, x, lineY);
             });
         }
         
@@ -8668,6 +8647,8 @@ async function handleCaptionCommand(interaction) {
             drawMemeText(bottomText, image.width / 2, bottomY, image.width * 0.9);
         }
         
+        console.log('Generating image buffer...');
+        
         // Convert canvas to buffer
         const buffer = canvas.toBuffer('image/png');
         
@@ -8680,18 +8661,28 @@ async function handleCaptionCommand(interaction) {
             .setDescription(`${topText ? `**Top:** ${topText}\n` : ''}${bottomText ? `**Bottom:** ${bottomText}` : ''}`)
             .setImage('attachment://meme.png')
             .setColor(0xFFD700)
-            .setFooter({ text: 'Made with 🧀 by AquaCheese' });
+            .setFooter({ text: 'Made with 🧀 by AquaCheese • Using Impact Font' });
+        
+        console.log('Sending response...');
         
         await interaction.editReply({ 
             embeds: [embed], 
             files: [captionedImage] 
         });
         
+        console.log('Meme created successfully!');
+        
     } catch (error) {
         console.error('Error creating meme:', error);
-        await interaction.editReply({ 
-            content: '❌ An error occurred while creating the meme. Please try again with a different image.' 
-        });
+        
+        // Check if we can still edit the reply
+        try {
+            await interaction.editReply({ 
+                content: '❌ An error occurred while creating the meme. Please try again with a different image.' 
+            });
+        } catch (replyError) {
+            console.error('Failed to send error message:', replyError);
+        }
     }
 }
 
