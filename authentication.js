@@ -140,8 +140,8 @@ class AuthenticationSystem {
 
     async createInitialSetupEmbed() {
         const embed = new EmbedBuilder()
-            .setTitle('🔐 Guardian Security Bot - Initial Setup')
-            .setDescription('**Welcome to Guardian Security Bot!**\n\nTo ensure maximum security, only **ONE** person can control this bot. You need to set up authentication first.')
+            .setTitle('🔐 CheeseBot - Initial Setup')
+            .setDescription('**Welcome to CheeseBot!**\n\nTo ensure maximum security, only **ONE** person can control this bot. You need to set up authentication first.')
             .setColor(0x3498DB)
             .addFields(
                 { 
@@ -160,7 +160,7 @@ class AuthenticationSystem {
                     inline: false 
                 }
             )
-            .setFooter({ text: 'Click the button below to start setup' });
+            .setFooter({ text: 'Made with 🧀 by AquaCheese • Click the button below to start setup' });
 
         const button = new ActionRowBuilder()
             .addComponents(
@@ -175,7 +175,7 @@ class AuthenticationSystem {
 
     async createLoginEmbed() {
         const embed = new EmbedBuilder()
-            .setTitle('🔐 Guardian Security Bot - Login Required')
+            .setTitle('🔐 CheeseBot - Login Required')
             .setDescription('You need to authenticate to use administrative features of this bot.')
             .setColor(0xE74C3C)
             .addFields(
@@ -237,7 +237,7 @@ class AuthenticationSystem {
     async createLoginModal() {
         const modal = new ModalBuilder()
             .setCustomId('auth_login_submit')
-            .setTitle('🔐 Login to Guardian Bot');
+            .setTitle('🔐 Login to CheeseBot');
 
         const passwordInput = new TextInputBuilder()
             .setCustomId('password')
@@ -294,7 +294,7 @@ class AuthenticationSystem {
             console.log(`[AUTH] Reusing existing TOTP secret for user ${userId}`);
             secret = {
                 base32: existingUser.totp_secret,
-                otpauth_url: `otpauth://totp/Guardian%20Security%20Bot:${username}?secret=${existingUser.totp_secret}&issuer=Guardian%20Security%20Bot`
+                otpauth_url: `otpauth://totp/CheeseBot:${username}?secret=${existingUser.totp_secret}&issuer=CheeseBot`
             };
             
             // Decode existing backup codes or generate new ones
@@ -313,8 +313,8 @@ class AuthenticationSystem {
             // New user, generate new secret
             console.log(`[AUTH] Generating new TOTP secret for user ${userId}`);
             secret = speakeasy.generateSecret({
-                name: `Guardian Bot (${username})`,
-                issuer: 'Guardian Security Bot',
+                name: `CheeseBot (${username})`,
+                issuer: 'CheeseBot',
                 length: 32
             });
             backupCodes = this.generateBackupCodes();
@@ -576,7 +576,7 @@ class AuthenticationSystem {
     async createSuccessEmbed(username) {
         const embed = new EmbedBuilder()
             .setTitle('✅ Authentication Setup Complete!')
-            .setDescription(`**Welcome, ${username}!**\n\nYour Guardian Security Bot is now secured with 2FA authentication.`)
+            .setDescription(`**Welcome, ${username}!**\n\nYour CheeseBot is now secured with 2FA authentication.`)
             .setColor(0x2ECC71)
             .addFields(
                 { 
@@ -662,7 +662,7 @@ class AuthenticationSystem {
             throw new Error('User not found or setup not complete');
         }
 
-        const otpAuthUrl = `otpauth://totp/Guardian%20Security%20Bot:${user.username}?secret=${user.totp_secret}&issuer=Guardian%20Security%20Bot`;
+                const otpAuthUrl = `otpauth://totp/CheeseBot:${user.username}?secret=${user.totp_secret}&issuer=CheeseBot`;
         
         try {
             const qrCodeDataUrl = await QRCode.toDataURL(otpAuthUrl);
@@ -707,7 +707,7 @@ class AuthenticationSystem {
                         )
                         .setThumbnail(user.displayAvatarURL())
                         .setTimestamp()
-                        .setFooter({ text: 'Guardian Security Alert' });
+                        .setFooter({ text: 'CheeseBot Security Alert' });
 
                     await logsChannel.send({ embeds: [embed] });
                 }

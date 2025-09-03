@@ -1,8 +1,8 @@
-# 🔐 Guardian Security Bot - Authentication Setup Guide
+# 🔐 CheeseBot - Authentication Setup Guide
 
 ## Overview
 
-Guardian Security Bot now includes a comprehensive authentication system to ensure **only ONE person** can control the bot's administrative features. This system includes:
+CheeseBot now includes a comprehensive authentication system to ensure **only ONE person** can control the bot's administrative features. This system includes:
 
 - **Password Protection** - Strong password requirements
 - **2FA Authentication** - TOTP codes from authenticator apps (Authy, Google Authenticator, etc.)

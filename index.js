@@ -48,7 +48,7 @@ client.commands = new Collection();
 const commands = [
     new SlashCommandBuilder()
         .setName('setup')
-        .setDescription('Configure Guardian Security Bot settings')
+        .setDescription('Configure CheeseBot settings')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     
     new SlashCommandBuilder()
@@ -270,6 +270,64 @@ const commands = [
     new SlashCommandBuilder()
         .setName('anonymous')
         .setDescription('Send an anonymous message (your identity will be logged for moderation)'),
+
+    // YouTube Integration Commands
+    new SlashCommandBuilder()
+        .setName('yt')
+        .setDescription('YouTube integration commands')
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('recent')
+                .setDescription('Show the most recent video from the configured YouTube channel'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('post')
+                .setDescription('Show the most recent community post from the configured YouTube channel'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('live')
+                .setDescription('Show the most recent live stream from the configured YouTube channel'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('popular')
+                .setDescription('Show the most popular content from the configured YouTube channel'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('channel')
+                .setDescription('Show information about the configured YouTube channel'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('setup')
+                .setDescription('Configure the YouTube channel for this server (Admin only)')
+                .addStringOption(option =>
+                    option.setName('channel_url')
+                        .setDescription('YouTube channel URL or handle (e.g., @username)')
+                        .setRequired(true))),
+
+    // AquaCheese YouTube Commands
+    new SlashCommandBuilder()
+        .setName('aquacheese')
+        .setDescription('AquaCheese YouTube content commands')
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('recent')
+                .setDescription('Show the most recent AquaCheese video'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('post')
+                .setDescription('Show the most recent AquaCheese community post'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('live')
+                .setDescription('Show the most recent AquaCheese live stream'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('popular')
+                .setDescription('Show the most popular AquaCheese content'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('channel')
+                .setDescription('Show AquaCheese YouTube channel information')),
 
     // Ticketing System Commands
     new SlashCommandBuilder()
@@ -744,7 +802,7 @@ async function notifyRestart(client, restartCount) {
 
 // When the client is ready, run this code (only once)
 client.once(Events.ClientReady, async readyClient => {
-    console.log(`🛡️ Guardian Security Bot is ready! Logged in as ${readyClient.user.tag}`);
+    console.log(`🧀 CheeseBot is ready! Logged in as ${readyClient.user.tag}`);
     
     // Initialize authentication tables
     try {
@@ -1497,7 +1555,7 @@ async function handleSlashCommand(interaction) {
 
     try {
         // Commands that don't require authentication
-        const publicCommands = ['login', 'status', 'afk', 'ascii', 'suggest', 'report', 'birthday', 'anonymous', 'userstats', 'countleaderboard', 'counthistory'];
+        const publicCommands = ['login', 'status', 'afk', 'ascii', 'suggest', 'report', 'birthday', 'anonymous', 'userstats', 'countleaderboard', 'counthistory', 'yt', 'aquacheese'];
         
         if (!publicCommands.includes(commandName)) {
             // Special check for user command - only primary admin can use it
@@ -1681,6 +1739,14 @@ async function handleSlashCommand(interaction) {
             
             case 'update':
                 await handleUpdateCommand(interaction);
+                break;
+            
+            case 'yt':
+                await handleYouTubeCommand(interaction);
+                break;
+            
+            case 'aquacheese':
+                await handleAquaCheeseCommand(interaction);
                 break;
             
             default:
@@ -2014,7 +2080,7 @@ async function handleQRCodeCommand(interaction) {
         const embed = new EmbedBuilder()
             .setTitle('📱 New 2FA QR Code')
             .setDescription('**Follow these steps to update your authenticator app:**\n\n' +
-                           '1. **Delete** the old "Guardian Security Bot" entry from your authenticator app\n' +
+                           '1. **Delete** the old "CheeseBot" entry from your authenticator app\n' +
                            '2. **Scan** the QR code below with your authenticator app (Authy, Google Authenticator, etc.)\n' +
                            '3. **Test** by trying to log in with a new 6-digit code\n\n' +
                            '⚠️ **Important:** This QR code contains your current authentication secret.')
@@ -2254,7 +2320,7 @@ async function handleStatusCommand(interaction) {
     const settings = await database.getModerationSettings(interaction.guild.id);
     
     const embed = new EmbedBuilder()
-        .setTitle('🛡️ Guardian Security Bot Status')
+        .setTitle('🧀 CheeseBot Status')
         .setDescription('Current bot status and configuration overview')
         .addFields(
             { 
@@ -5048,7 +5114,17 @@ async function handleHelpCommand(interaction) {
                 inline: false
             },
             {
-                name: '💡 Utility Commands',
+                name: '� YouTube Commands',
+                value: '`/yt recent` - Latest video from configured channel\n`/yt channel` - Channel information\n`/yt setup` - Configure YouTube channel (Admin only)',
+                inline: false
+            },
+            {
+                name: '🧀 AquaCheese Commands',
+                value: '`/aquacheese recent` - Latest AquaCheese video\n`/aquacheese popular` - Popular AquaCheese content\n`/aquacheese channel` - AquaCheese channel info',
+                inline: false
+            },
+            {
+                name: '�💡 Utility Commands',
                 value: '`/suggest` - Make a suggestion\n`/report` - Report an issue\n`/afk` - Set yourself as AFK\n`/anonymous` - Send an anonymous message',
                 inline: false
             },
@@ -5065,7 +5141,7 @@ async function handleHelpCommand(interaction) {
         )
         .setColor(0x3742FA)
         .setThumbnail(interaction.client.user.displayAvatarURL())
-        .setFooter({ text: 'Use /adminhelp for administrative commands (requires permissions)' });
+        .setFooter({ text: 'Made with 🧀 by AquaCheese • Use /adminhelp for administrative commands (requires permissions)' });
     
     await interaction.reply({ embeds: [embed] });
 }
@@ -5114,7 +5190,7 @@ async function handleAdminHelpCommand(interaction) {
         )
         .setColor(0xFF6B6B)
         .setThumbnail(interaction.client.user.displayAvatarURL())
-        .setFooter({ text: 'CheeseBot v1.0 - Complete Security Solution' });
+        .setFooter({ text: 'Made with 🧀 by AquaCheese • CheeseBot v1.0 - Complete Security Solution' });
     
     await interaction.reply({ embeds: [embed], ephemeral: true });
 }
@@ -5876,7 +5952,7 @@ client.on(Events.GuildMemberRemove, async member => {
 // Handle bot joining a server (restore configuration)
 client.on(Events.GuildCreate, async guild => {
     try {
-        console.log(`🛡️ Guardian Bot joined server: ${guild.name} (ID: ${guild.id})`);
+        console.log(`🧀 CheeseBot joined server: ${guild.name} (ID: ${guild.id})`);
         
         // Check if we have existing configuration for this server
         const existingConfig = await database.getServerConfig(guild.id);
@@ -5913,7 +5989,7 @@ client.on(Events.GuildCreate, async guild => {
                 const owner = await guild.fetchOwner();
                 
                 const embed = new EmbedBuilder()
-                    .setTitle('🛡️ Guardian Bot Configuration Restored')
+                    .setTitle('🧀 CheeseBot Configuration Restored')
                     .setDescription(`Welcome back! I've restored your previous security configuration for **${guild.name}**.`)
                     .setColor(0x2ECC71)
                     .addFields(
@@ -5943,7 +6019,7 @@ client.on(Events.GuildCreate, async guild => {
                         }
                     )
                     .setTimestamp()
-                    .setFooter({ text: 'Guardian Security Bot - Configuration Restored' });
+                    .setFooter({ text: 'CheeseBot - Configuration Restored' });
                 
                 await owner.send({ embeds: [embed] });
                 console.log(`✅ Notified ${owner.user.tag} about configuration restoration for ${guild.name}`);
@@ -5963,8 +6039,8 @@ client.on(Events.GuildCreate, async guild => {
                 const owner = await guild.fetchOwner();
                 
                 const embed = new EmbedBuilder()
-                    .setTitle('🛡️ Welcome to Guardian Security Bot!')
-                    .setDescription(`Thank you for adding Guardian Bot to **${guild.name}**!`)
+                    .setTitle('🧀 Welcome to CheeseBot!')
+                    .setDescription(`Thank you for adding CheeseBot to **${guild.name}**!`)
                     .setColor(0x3498DB)
                     .addFields(
                         {
@@ -5984,7 +6060,7 @@ client.on(Events.GuildCreate, async guild => {
                         }
                     )
                     .setTimestamp()
-                    .setFooter({ text: 'Guardian Security Bot - Ready to Protect' });
+                    .setFooter({ text: 'Made with 🧀 by AquaCheese • CheeseBot - Ready to Serve' });
                 
                 await owner.send({ embeds: [embed] });
                 console.log(`✅ Sent welcome message to ${owner.user.tag} for ${guild.name}`);
@@ -6002,7 +6078,7 @@ client.on(Events.GuildCreate, async guild => {
 // Handle bot leaving a server (backup configuration)
 client.on(Events.GuildDelete, async guild => {
     try {
-        console.log(`👋 Guardian Bot removed from server: ${guild.name} (ID: ${guild.id})`);
+        console.log(`👋 CheeseBot removed from server: ${guild.name} (ID: ${guild.id})`);
         
         // Create a backup timestamp for potential restoration
         await database.markServerAsLeft(guild.id);
@@ -6677,13 +6753,13 @@ async function handleBackupExport(interaction) {
                 }
             )
             .setTimestamp()
-            .setFooter({ text: `Guardian Bot v${configData.botVersion} - Complete Backup System` });
+            .setFooter({ text: `CheeseBot v${configData.botVersion} - Complete Backup System` });
         
         // Create backup file
         const backupJson = JSON.stringify(configData, null, 2);
         const backupBuffer = Buffer.from(backupJson, 'utf-8');
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const filename = `guardian-complete-backup-${interaction.guild.name.replace(/[^a-zA-Z0-9]/g, '')}-${timestamp}.json`;
+        const filename = `cheesebot-complete-backup-${interaction.guild.name.replace(/[^a-zA-Z0-9]/g, '')}-${timestamp}.json`;
         
         const attachment = new AttachmentBuilder(backupBuffer, { name: filename });
         
@@ -6824,7 +6900,7 @@ async function handleBackupStatus(interaction) {
         );
         
         statusEmbed.setTimestamp();
-        statusEmbed.setFooter({ text: `Guardian Bot v${configData.botVersion} - Complete Backup System` });
+        statusEmbed.setFooter({ text: `CheeseBot v${configData.botVersion} - Complete Backup System` });
         
         await interaction.editReply({ embeds: [statusEmbed] });
         
@@ -6886,7 +6962,7 @@ async function handleBackupImport(interaction) {
             return await interaction.editReply({
                 embeds: [new EmbedBuilder()
                     .setTitle('❌ Invalid Backup Format')
-                    .setDescription('The uploaded file does not appear to be a valid Guardian Bot backup.')
+                    .setDescription('The uploaded file does not appear to be a valid CheeseBot backup.')
                     .setColor(0xE74C3C)]
             });
         }
@@ -7377,7 +7453,7 @@ async function handleIncidentReport(interaction) {
             )
             .setTimestamp()
             .setFooter({ 
-                text: `Guardian Security Alert - Incident ${incident.incidentId}`,
+                text: `CheeseBot Security Alert - Incident ${incident.incidentId}`,
                 iconURL: 'https://cdn.discordapp.com/emojis/🚨'
             });
         
@@ -7737,7 +7813,7 @@ ${userInfo.legal_notice.sharing_restrictions}
 ${userInfo.legal_notice.collection_compliance}
 
 REPORT GENERATED: ${new Date().toISOString()}
-GUARDIAN BOT EVIDENCE COLLECTION SYSTEM v3.0
+CHEESEBOT EVIDENCE COLLECTION SYSTEM v3.0
 ============================================
 `;
 
@@ -7773,7 +7849,7 @@ server.listen(PORT, () => {
 
 // Graceful shutdown
 process.on('SIGINT', () => {
-    console.log('Shutting down Guardian Security Bot...');
+    console.log('Shutting down CheeseBot...');
     database.close();
     client.destroy();
     server.close();
@@ -7973,6 +8049,342 @@ async function handleCancelReset(interaction, guildId) {
             content: '❌ Failed to cancel reset.', 
             ephemeral: true 
         });
+    }
+}
+
+// YouTube Integration Functions
+const AQUACHEESE_CHANNEL_ID = 'UCbVnPJUF_k5X2Tk5YjgEIpQ'; // AquaCheese channel ID
+
+async function handleYouTubeCommand(interaction) {
+    const subcommand = interaction.options.getSubcommand();
+    
+    try {
+        switch (subcommand) {
+            case 'recent':
+                await handleYouTubeRecent(interaction);
+                break;
+            case 'post':
+                await handleYouTubePost(interaction);
+                break;
+            case 'live':
+                await handleYouTubeLive(interaction);
+                break;
+            case 'popular':
+                await handleYouTubePopular(interaction);
+                break;
+            case 'channel':
+                await handleYouTubeChannel(interaction);
+                break;
+            case 'setup':
+                await handleYouTubeSetup(interaction);
+                break;
+            default:
+                await interaction.reply({ content: 'Unknown YouTube subcommand!', ephemeral: true });
+        }
+    } catch (error) {
+        console.error('YouTube command error:', error);
+        
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ YouTube Error')
+            .setDescription('There was an error fetching YouTube data. Please try again later.')
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+}
+
+async function handleAquaCheeseCommand(interaction) {
+    const subcommand = interaction.options.getSubcommand();
+    
+    try {
+        switch (subcommand) {
+            case 'recent':
+                await handleAquaCheeseRecent(interaction);
+                break;
+            case 'post':
+                await handleAquaCheesePost(interaction);
+                break;
+            case 'live':
+                await handleAquaCheeseLive(interaction);
+                break;
+            case 'popular':
+                await handleAquaCheesePopular(interaction);
+                break;
+            case 'channel':
+                await handleAquaCheeseChannel(interaction);
+                break;
+            default:
+                await interaction.reply({ content: 'Unknown AquaCheese subcommand!', ephemeral: true });
+        }
+    } catch (error) {
+        console.error('AquaCheese command error:', error);
+        
+        const errorEmbed = new EmbedBuilder()
+            .setTitle('❌ YouTube Error')
+            .setDescription('There was an error fetching AquaCheese YouTube data. Please try again later.')
+            .setColor(0xE74C3C);
+        
+        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+}
+
+// Generic YouTube API functions
+async function getChannelIdFromConfig(guildId) {
+    try {
+        const config = await database.getServerConfig(guildId);
+        return config?.youtube_channel_id || null;
+    } catch (error) {
+        console.error('Error getting channel ID from config:', error);
+        return null;
+    }
+}
+
+async function fetchYouTubeData(channelId, type = 'recent') {
+    // Note: This is a placeholder for YouTube API integration
+    // In a real implementation, you would use the YouTube Data API v3
+    // For now, we'll return mock data structure
+    
+    if (!process.env.YOUTUBE_API_KEY) {
+        throw new Error('YouTube API key not configured');
+    }
+    
+    try {
+        // This would be replaced with actual YouTube API calls
+        const mockData = {
+            recent: {
+                title: 'Latest Video Title',
+                description: 'Video description here...',
+                url: 'https://youtube.com/watch?v=example',
+                thumbnail: 'https://img.youtube.com/vi/example/maxresdefault.jpg',
+                publishedAt: new Date().toISOString(),
+                views: '1,234',
+                likes: '567'
+            },
+            channel: {
+                name: 'Channel Name',
+                description: 'Channel description...',
+                url: 'https://youtube.com/@channel',
+                thumbnail: 'https://yt3.ggpht.com/example/avatar.jpg',
+                subscribers: '10K',
+                videos: '234'
+            }
+        };
+        
+        return mockData[type] || mockData.recent;
+    } catch (error) {
+        console.error('YouTube API error:', error);
+        throw error;
+    }
+}
+
+// Server-specific YouTube command handlers
+async function handleYouTubeRecent(interaction) {
+    const channelId = await getChannelIdFromConfig(interaction.guild.id);
+    
+    if (!channelId) {
+        const embed = new EmbedBuilder()
+            .setTitle('⚠️ No YouTube Channel Configured')
+            .setDescription('This server hasn\'t set up a YouTube channel yet. Use `/yt setup` to configure one.')
+            .setColor(0xF39C12);
+        
+        return await interaction.reply({ embeds: [embed] });
+    }
+    
+    await interaction.deferReply();
+    
+    try {
+        const videoData = await fetchYouTubeData(channelId, 'recent');
+        
+        const embed = new EmbedBuilder()
+            .setTitle('📺 Latest Video')
+            .setDescription(videoData.description.substring(0, 200) + '...')
+            .setURL(videoData.url)
+            .setThumbnail(videoData.thumbnail)
+            .addFields(
+                { name: '👀 Views', value: videoData.views, inline: true },
+                { name: '👍 Likes', value: videoData.likes, inline: true },
+                { name: '📅 Published', value: `<t:${Math.floor(new Date(videoData.publishedAt).getTime() / 1000)}:R>`, inline: true }
+            )
+            .setColor(0xFF0000)
+            .setFooter({ text: 'Made with 🧀 by AquaCheese • YouTube Integration' });
+        
+        await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+        await interaction.editReply({ content: '❌ Failed to fetch YouTube data.' });
+    }
+}
+
+async function handleYouTubePost(interaction) {
+    await interaction.reply({ content: '🚧 Community posts feature coming soon!', ephemeral: true });
+}
+
+async function handleYouTubeLive(interaction) {
+    await interaction.reply({ content: '🚧 Live streams feature coming soon!', ephemeral: true });
+}
+
+async function handleYouTubePopular(interaction) {
+    await interaction.reply({ content: '🚧 Popular content feature coming soon!', ephemeral: true });
+}
+
+async function handleYouTubeChannel(interaction) {
+    const channelId = await getChannelIdFromConfig(interaction.guild.id);
+    
+    if (!channelId) {
+        const embed = new EmbedBuilder()
+            .setTitle('⚠️ No YouTube Channel Configured')
+            .setDescription('This server hasn\'t set up a YouTube channel yet. Use `/yt setup` to configure one.')
+            .setColor(0xF39C12);
+        
+        return await interaction.reply({ embeds: [embed] });
+    }
+    
+    await interaction.deferReply();
+    
+    try {
+        const channelData = await fetchYouTubeData(channelId, 'channel');
+        
+        const embed = new EmbedBuilder()
+            .setTitle('📺 YouTube Channel')
+            .setDescription(channelData.description.substring(0, 200) + '...')
+            .setURL(channelData.url)
+            .setThumbnail(channelData.thumbnail)
+            .addFields(
+                { name: '📊 Subscribers', value: channelData.subscribers, inline: true },
+                { name: '🎬 Videos', value: channelData.videos, inline: true }
+            )
+            .setColor(0xFF0000)
+            .setFooter({ text: 'Made with 🧀 by AquaCheese • YouTube Integration' });
+        
+        await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+        await interaction.editReply({ content: '❌ Failed to fetch channel data.' });
+    }
+}
+
+async function handleYouTubeSetup(interaction) {
+    // Check if user has admin permissions
+    if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+        const embed = new EmbedBuilder()
+            .setTitle('❌ Permission Denied')
+            .setDescription('You need "Manage Server" permission to configure YouTube integration.')
+            .setColor(0xE74C3C);
+        
+        return await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+    
+    const channelUrl = interaction.options.getString('channel_url');
+    
+    // Extract channel ID or handle from URL
+    let channelId = null;
+    if (channelUrl.includes('@')) {
+        // Handle format: @username
+        channelId = channelUrl.replace('https://www.youtube.com/', '').replace('@', '');
+    } else if (channelUrl.includes('/channel/')) {
+        // Channel ID format
+        channelId = channelUrl.split('/channel/')[1];
+    }
+    
+    if (!channelId) {
+        const embed = new EmbedBuilder()
+            .setTitle('❌ Invalid Channel URL')
+            .setDescription('Please provide a valid YouTube channel URL or handle (e.g., @username)')
+            .setColor(0xE74C3C);
+        
+        return await interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+    
+    try {
+        // Save to database
+        await database.updateServerConfig(interaction.guild.id, { youtube_channel_id: channelId });
+        
+        const embed = new EmbedBuilder()
+            .setTitle('✅ YouTube Channel Configured')
+            .setDescription(`YouTube integration has been set up for this server!\n\n**Channel:** \`${channelUrl}\``)
+            .addFields(
+                { name: '🎬 Available Commands', value: '`/yt recent` - Latest video\n`/yt channel` - Channel info\n`/yt popular` - Popular content', inline: false }
+            )
+            .setColor(0x2ECC71)
+            .setFooter({ text: 'Made with 🧀 by AquaCheese • YouTube Integration' });
+        
+        await interaction.reply({ embeds: [embed] });
+    } catch (error) {
+        console.error('YouTube setup error:', error);
+        await interaction.reply({ content: '❌ Failed to configure YouTube integration.', ephemeral: true });
+    }
+}
+
+// AquaCheese-specific YouTube command handlers
+async function handleAquaCheeseRecent(interaction) {
+    await interaction.deferReply();
+    
+    try {
+        // Use hardcoded AquaCheese channel data
+        const embed = new EmbedBuilder()
+            .setTitle('🧀 Latest AquaCheese Video')
+            .setDescription('Check out the latest content from AquaCheese!')
+            .setURL('https://www.youtube.com/@aquacheese1')
+            .addFields(
+                { name: '📺 Channel', value: '[AquaCheese](https://www.youtube.com/@aquacheese1)', inline: true },
+                { name: '🔗 Direct Link', value: '[Visit Channel](https://www.youtube.com/@aquacheese1)', inline: true }
+            )
+            .setColor(0xFFD700)
+            .setFooter({ text: 'Made with 🧀 by AquaCheese • Official Channel' });
+        
+        await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+        await interaction.editReply({ content: '❌ Failed to fetch AquaCheese data.' });
+    }
+}
+
+async function handleAquaCheesePost(interaction) {
+    await interaction.reply({ content: '🚧 AquaCheese community posts feature coming soon!', ephemeral: true });
+}
+
+async function handleAquaCheeseLive(interaction) {
+    await interaction.reply({ content: '🚧 AquaCheese live streams feature coming soon!', ephemeral: true });
+}
+
+async function handleAquaCheesePopular(interaction) {
+    await interaction.deferReply();
+    
+    try {
+        const embed = new EmbedBuilder()
+            .setTitle('🧀 Popular AquaCheese Content')
+            .setDescription('Discover the most popular videos from AquaCheese!')
+            .setURL('https://www.youtube.com/@aquacheese1')
+            .addFields(
+                { name: '📺 Channel', value: '[AquaCheese](https://www.youtube.com/@aquacheese1)', inline: true },
+                { name: '🎬 Browse Videos', value: '[View All Videos](https://www.youtube.com/@aquacheese1/videos)', inline: true }
+            )
+            .setColor(0xFFD700)
+            .setFooter({ text: 'Made with 🧀 by AquaCheese • Official Channel' });
+        
+        await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+        await interaction.editReply({ content: '❌ Failed to fetch AquaCheese data.' });
+    }
+}
+
+async function handleAquaCheeseChannel(interaction) {
+    await interaction.deferReply();
+    
+    try {
+        const embed = new EmbedBuilder()
+            .setTitle('🧀 AquaCheese YouTube Channel')
+            .setDescription('Welcome to the official AquaCheese YouTube channel! Subscribe for awesome content.')
+            .setURL('https://www.youtube.com/@aquacheese1')
+            .addFields(
+                { name: '📺 Channel Link', value: '[AquaCheese](https://www.youtube.com/@aquacheese1)', inline: true },
+                { name: '🔔 Subscribe', value: '[Subscribe Now](https://www.youtube.com/@aquacheese1?sub_confirmation=1)', inline: true },
+                { name: '🎬 Latest Videos', value: '[Browse Content](https://www.youtube.com/@aquacheese1/videos)', inline: true }
+            )
+            .setColor(0xFFD700)
+            .setThumbnail('https://github.com/AquaCheese.png') // Using GitHub avatar as placeholder
+            .setFooter({ text: 'Made with 🧀 by AquaCheese • Official Channel' });
+        
+        await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+        await interaction.editReply({ content: '❌ Failed to fetch AquaCheese channel data.' });
     }
 }
 

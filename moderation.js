@@ -399,7 +399,7 @@ class ModerationSystem {
                 )
                 .setColor(0xE74C3C)
                 .setTimestamp()
-                .setFooter({ text: 'Guardian Security Bot' });
+                .setFooter({ text: 'CheeseBot' });
 
             await member.send({ embeds: [embed] });
         } catch (error) {

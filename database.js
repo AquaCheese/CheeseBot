@@ -3,7 +3,7 @@ const path = require('path');
 
 class Database {
     constructor() {
-        this.db = new sqlite3.Database(path.join(__dirname, 'guardian.db'));
+        this.db = new sqlite3.Database(path.join(__dirname, 'cheesebot.db'));
         this.initializeTables();
     }
 
@@ -395,6 +395,16 @@ class Database {
             // Ignore error if column already exists
             if (err && !err.message.includes('duplicate column name')) {
                 console.log('Migration note:', err.message);
+            }
+        });
+
+        // Migration: Add youtube_channel_id column to server_configs table
+        this.db.run(`
+            ALTER TABLE server_configs ADD COLUMN youtube_channel_id TEXT
+        `, (err) => {
+            // Ignore error if column already exists
+            if (err && !err.message.includes('duplicate column name')) {
+                console.log('YouTube migration note:', err.message);
             }
         });
     }
