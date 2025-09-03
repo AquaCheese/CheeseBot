@@ -9891,10 +9891,11 @@ async function handleGoalSet(interaction) {
     try {
         const goalId = await database.createGoal(interaction.guild.id, goalData);
         
+        // Initialize current progress
+        let currentProgress = 0;
+        
         // If it's an auto-tracked goal, set initial progress
         if (goalInfo.autoTrack) {
-            let currentProgress = 0;
-            
             if (goalType === 'boosts') {
                 currentProgress = interaction.guild.premiumSubscriptionCount || 0;
                 await database.updateGoalProgress(goalId, currentProgress, 'system', 'initial_setup');

@@ -26,6 +26,11 @@ A comprehensive all-in-one Discord bot with security, moderation, and community 
 - **🔧 Fine-grained Controls** - Customize every aspect of protection
 - **💾 Persistent Storage** - SQLite database for reliable data storage
 - **🎯 Role-based Protection** - Configure safe roles for panic mode
+- **🎯 Goal System** - Set and track server goals with automatic progress monitoring
+  - **🚀 Boost Tracking** - Automatically track server boost goals
+  - **👥 Member Milestones** - Monitor member count growth goals
+  - **📊 Progress Visualization** - Beautiful progress bars and celebrations
+  - **🎉 Auto Celebrations** - Automatic announcements when goals are reached
 
 ## 🚀 Quick Setup
 
@@ -90,6 +95,12 @@ Your bot needs these permissions:
   - Upload any image and add top and/or bottom text
   - Automatic text wrapping and sizing for perfect meme format
   - High-quality output with white text and black outline
+- `/goal` - Server goal management system
+  - `/goal set` - Create new goals (boosts, members, messages, events, reactions, custom)
+  - `/goal view` - View all active goals with progress bars
+  - `/goal update` - Manually update goal progress
+  - `/goal delete` - Remove goals
+  - `/goal celebrate` - Trigger manual celebrations
 - `/suggest <suggestion>` - Submit a suggestion to server staff
 - `/report <type> <description> [user]` - Report issues or users to moderators
   - Types: User Behavior, Bug/Technical Issue, Content Issue, Other
