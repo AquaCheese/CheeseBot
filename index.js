@@ -640,9 +640,10 @@ const commands = [
         )
         .addStringOption(option =>
             option.setName('font_size')
-                .setDescription('Font size adjustment (tiny, small, normal, large, huge)')
+                .setDescription('Font size (auto recommended - analyzes image and text automatically)')
                 .setRequired(false)
                 .addChoices(
+                    { name: 'Auto (Recommended)', value: 'auto' },
                     { name: 'Tiny', value: 'tiny' },
                     { name: 'Small', value: 'small' },
                     { name: 'Normal', value: 'normal' },
@@ -8552,7 +8553,7 @@ async function handleCaptionCommand(interaction) {
         const attachment = interaction.options.getAttachment('image');
         const topText = interaction.options.getString('top_text') || '';
         const bottomText = interaction.options.getString('bottom_text') || '';
-        const fontSizeOption = interaction.options.getString('font_size') || 'normal';
+        const fontSizeOption = interaction.options.getString('font_size') || 'auto';
         
         // Validate attachment
         if (!attachment) {
@@ -8587,33 +8588,93 @@ async function handleCaptionCommand(interaction) {
         // Draw the original image
         ctx.drawImage(image, 0, 0);
         
-        // Configure text style with more robust font handling
-        // Enhanced font sizing with user choice and support for much smaller fonts
-        let baseFontSize;
-        if (image.width < 200 || image.height < 200) {
-            // Very small images - allow for tiny fonts
-            baseFontSize = Math.max(image.width / 8, image.height / 8, 16);
-        } else if (image.width < 400 || image.height < 400) {
-            // Small images
-            baseFontSize = Math.max(image.width / 10, image.height / 10, 20);
-        } else {
-            // Medium and large images
-            baseFontSize = Math.max(image.width / 12, image.height / 12, 24);
+        // Configure text style with intelligent auto-sizing
+        // Calculate optimal font size based on image dimensions and text length
+        function calculateOptimalFontSize(imageWidth, imageHeight, topText, bottomText, userSizeOption) {
+            // Calculate total text length
+            const totalTextLength = (topText || '').length + (bottomText || '').length;
+            const longestSingleText = Math.max((topText || '').length, (bottomText || '').length);
+            
+            // Base font size calculation using image area and aspect ratio
+            const imageArea = imageWidth * imageHeight;
+            const aspectRatio = imageWidth / imageHeight;
+            
+            // Calculate base size considering image dimensions
+            let baseFontSize;
+            if (imageArea < 40000) { // Very small images (e.g., 200x200)
+                baseFontSize = Math.max(Math.min(imageWidth, imageHeight) / 8, 14);
+            } else if (imageArea < 160000) { // Small to medium images (e.g., 400x400)
+                baseFontSize = Math.max(Math.min(imageWidth, imageHeight) / 10, 18);
+            } else if (imageArea < 640000) { // Large images (e.g., 800x800)
+                baseFontSize = Math.max(Math.min(imageWidth, imageHeight) / 12, 22);
+            } else { // Very large images
+                baseFontSize = Math.max(Math.min(imageWidth, imageHeight) / 14, 26);
+            }
+            
+            // Adjust for text length (automatic intelligent sizing)
+            let textLengthMultiplier = 1.0;
+            if (longestSingleText > 200) {
+                textLengthMultiplier = 0.5; // Very long text - much smaller font
+            } else if (longestSingleText > 100) {
+                textLengthMultiplier = 0.65; // Long text - smaller font
+            } else if (longestSingleText > 50) {
+                textLengthMultiplier = 0.8; // Medium text - slightly smaller
+            } else if (longestSingleText < 20) {
+                textLengthMultiplier = 1.3; // Short text - larger font
+            } else if (longestSingleText < 10) {
+                textLengthMultiplier = 1.5; // Very short text - much larger font
+            }
+            
+            // Adjust for aspect ratio (wide images need different sizing)
+            let aspectMultiplier = 1.0;
+            if (aspectRatio > 2.0) { // Very wide images
+                aspectMultiplier = 0.8;
+            } else if (aspectRatio < 0.5) { // Very tall images
+                aspectMultiplier = 0.8;
+            }
+            
+            // Calculate auto-optimized size
+            const autoOptimizedSize = baseFontSize * textLengthMultiplier * aspectMultiplier;
+            
+            // Apply user preference multiplier if specified
+            const userMultipliers = {
+                'tiny': 0.4,
+                'small': 0.6,
+                'normal': 1.0,
+                'large': 1.4,
+                'huge': 1.8
+            };
+            
+            const userMultiplier = userSizeOption && userSizeOption !== 'auto' ? 
+                userMultipliers[userSizeOption] || 1.0 : 1.0;
+            
+            // If user didn't specify or chose auto, use optimized size
+            const finalSize = userSizeOption === 'auto' || !userSizeOption ? 
+                autoOptimizedSize : baseFontSize * userMultiplier;
+            
+            // Ensure minimum and maximum bounds
+            const boundedSize = Math.max(Math.min(finalSize, imageWidth / 4, imageHeight / 4), 10);
+            
+            console.log(`🎯 Font calculation:
+  Image: ${imageWidth}x${imageHeight} (area: ${imageArea}, aspect: ${aspectRatio.toFixed(2)})
+  Text lengths: top=${(topText || '').length}, bottom=${(bottomText || '').length}
+  Base font: ${baseFontSize}px
+  Text multiplier: ${textLengthMultiplier}x (longest: ${longestSingleText} chars)
+  Aspect multiplier: ${aspectMultiplier}x
+  Auto-optimized: ${autoOptimizedSize.toFixed(1)}px
+  User option: ${userSizeOption || 'auto'} (${userMultiplier}x)
+  Final size: ${boundedSize.toFixed(1)}px`);
+            
+            return boundedSize;
         }
         
-        // Apply font size multiplier based on user choice
-        const fontSizeMultipliers = {
-            'tiny': 0.4,    // 40% of base size - for very long text
-            'small': 0.6,   // 60% of base size - for longer text
-            'normal': 1.0,  // 100% of base size - default
-            'large': 1.4,   // 140% of base size - for shorter text
-            'huge': 1.8     // 180% of base size - for very short text
-        };
-        
-        const multiplier = fontSizeMultipliers[fontSizeOption] || 1.0;
-        const fontSize = Math.max(baseFontSize * multiplier, 12); // Minimum 12px font
-        
-        console.log(`Image size: ${image.width}x${image.height}, Base font: ${baseFontSize}, Size option: ${fontSizeOption} (${multiplier}x), Final font: ${fontSize}`);
+        const fontSize = calculateOptimalFontSize(
+            image.width, 
+            image.height, 
+            topText, 
+            bottomText, 
+            fontSizeOption
+        );
         
         // Use multiple font fallbacks to ensure text always renders
         const fontFamily = [
@@ -8788,12 +8849,16 @@ async function handleCaptionCommand(interaction) {
         const captionedImage = new AttachmentBuilder(buffer, { name: 'meme.png' });
         
         // Create embed
+        const fontSizeDisplay = fontSizeOption === 'auto' ? 
+            `Auto-Optimized (${Math.round(fontSize)}px)` : 
+            `${fontSizeOption.charAt(0).toUpperCase() + fontSizeOption.slice(1)} (${Math.round(fontSize)}px)`;
+            
         const embed = new EmbedBuilder()
             .setTitle('🎭 Custom Meme Created!')
-            .setDescription(`${topText ? `**Top:** ${topText.length > 50 ? topText.substring(0, 50) + '...' : topText}\n` : ''}${bottomText ? `**Bottom:** ${bottomText.length > 50 ? bottomText.substring(0, 50) + '...' : bottomText}\n` : ''}**Font Size:** ${fontSizeOption.charAt(0).toUpperCase() + fontSizeOption.slice(1)} (${Math.round(fontSize)}px)`)
+            .setDescription(`${topText ? `**Top:** ${topText.length > 50 ? topText.substring(0, 50) + '...' : topText}\n` : ''}${bottomText ? `**Bottom:** ${bottomText.length > 50 ? bottomText.substring(0, 50) + '...' : bottomText}\n` : ''}**Font Size:** ${fontSizeDisplay}`)
             .setImage('attachment://meme.png')
             .setColor(0xFFD700)
-            .setFooter({ text: 'Made with 🧀 by AquaCheese • Using Impact Font • Up to 500 characters per line!' });
+            .setFooter({ text: 'Made with 🧀 by AquaCheese • Auto-optimized for perfect fit!' });
         
         console.log('Sending response...');
         
