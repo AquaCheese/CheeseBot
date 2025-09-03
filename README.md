@@ -86,6 +86,10 @@ Your bot needs these permissions:
 - `/ascii <text>` - Convert text to classic ASCII art using dots, slashes, and underscores (max 12 characters)
   - Generates traditional ASCII art in Standard, Small, and Block styles
   - Perfect for creating retro-style text displays and banners
+- `/caption <image> [top_text] [bottom_text]` - Create custom memes with classic meme font styling
+  - Upload any image and add top and/or bottom text
+  - Automatic text wrapping and sizing for perfect meme format
+  - High-quality output with white text and black outline
 - `/suggest <suggestion>` - Submit a suggestion to server staff
 - `/report <type> <description> [user]` - Report issues or users to moderators
   - Types: User Behavior, Bug/Technical Issue, Content Issue, Other
