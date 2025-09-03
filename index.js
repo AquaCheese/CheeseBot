@@ -15,6 +15,7 @@ const {
     AttachmentBuilder,
     MessageFlags
 } = require('discord.js');
+const { createCanvas, loadImage, registerFont } = require('canvas');
 const http = require('http');
 require('dotenv').config();
 
@@ -611,7 +612,26 @@ const commands = [
                     { name: 'Security Update', value: 'security' },
                     { name: 'Feature Addition', value: 'feature' }
                 ))
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    
+    new SlashCommandBuilder()
+        .setName('caption')
+        .setDescription('Create a custom meme with top and bottom text')
+        .addAttachmentOption(option =>
+            option.setName('image')
+                .setDescription('The image to add text to')
+                .setRequired(true)
+        )
+        .addStringOption(option =>
+            option.setName('top_text')
+                .setDescription('Text to add at the top of the image')
+                .setRequired(false)
+        )
+        .addStringOption(option =>
+            option.setName('bottom_text')
+                .setDescription('Text to add at the bottom of the image')
+                .setRequired(false)
+        )
 ];
 
 // Get current bot version from package.json
@@ -1546,7 +1566,7 @@ async function handleSlashCommand(interaction) {
 
     try {
         // Commands that don't require authentication
-        const publicCommands = ['login', 'status', 'afk', 'ascii', 'suggest', 'report', 'birthday', 'anonymous', 'userstats', 'countleaderboard', 'counthistory', 'yt', 'aquacheese'];
+        const publicCommands = ['login', 'status', 'afk', 'ascii', 'suggest', 'report', 'birthday', 'anonymous', 'userstats', 'countleaderboard', 'counthistory', 'yt', 'aquacheese', 'caption'];
         
         if (!publicCommands.includes(commandName)) {
             // Special check for user command - only primary admin can use it
@@ -1738,6 +1758,10 @@ async function handleSlashCommand(interaction) {
             
             case 'aquacheese':
                 await handleAquaCheeseCommand(interaction);
+                break;
+            
+            case 'caption':
+                await handleCaptionCommand(interaction);
                 break;
             
             default:
@@ -8410,6 +8434,128 @@ async function handleAquaCheeseChannel(interaction) {
         await interaction.editReply({ embeds: [embed] });
     } catch (error) {
         await interaction.editReply({ content: '❌ Failed to fetch AquaCheese channel data.' });
+    }
+}
+
+// Caption command handler
+async function handleCaptionCommand(interaction) {
+    await interaction.deferReply();
+    
+    try {
+        const attachment = interaction.options.getAttachment('image');
+        const topText = interaction.options.getString('top_text') || '';
+        const bottomText = interaction.options.getString('bottom_text') || '';
+        
+        // Validate attachment
+        if (!attachment) {
+            return await interaction.editReply({ content: '❌ Please provide an image to caption.' });
+        }
+        
+        // Check if it's an image
+        if (!attachment.contentType || !attachment.contentType.startsWith('image/')) {
+            return await interaction.editReply({ content: '❌ Please provide a valid image file (PNG, JPG, GIF, etc.).' });
+        }
+        
+        // Check file size (Discord limit is 8MB for regular users, 50MB for Nitro)
+        if (attachment.size > 8 * 1024 * 1024) {
+            return await interaction.editReply({ content: '❌ Image file is too large. Please use an image smaller than 8MB.' });
+        }
+        
+        // Check if at least one text option is provided
+        if (!topText && !bottomText) {
+            return await interaction.editReply({ content: '❌ Please provide at least top text or bottom text for the meme.' });
+        }
+        
+        // Load the image
+        const image = await loadImage(attachment.url);
+        
+        // Create canvas with same dimensions as the image
+        const canvas = createCanvas(image.width, image.height);
+        const ctx = canvas.getContext('2d');
+        
+        // Draw the original image
+        ctx.drawImage(image, 0, 0);
+        
+        // Configure text style (classic meme font styling)
+        const fontSize = Math.max(Math.min(image.width / 12, image.height / 12), 20); // Dynamic font size
+        ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+        ctx.fillStyle = 'white';
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = fontSize / 15;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        // Function to wrap text and draw it
+        function drawMemeText(text, x, y, maxWidth) {
+            const words = text.toUpperCase().split(' ');
+            const lines = [];
+            let currentLine = '';
+            
+            for (const word of words) {
+                const testLine = currentLine + (currentLine ? ' ' : '') + word;
+                const metrics = ctx.measureText(testLine);
+                
+                if (metrics.width > maxWidth && currentLine) {
+                    lines.push(currentLine);
+                    currentLine = word;
+                } else {
+                    currentLine = testLine;
+                }
+            }
+            
+            if (currentLine) {
+                lines.push(currentLine);
+            }
+            
+            // Draw each line
+            const lineHeight = fontSize * 1.2;
+            const startY = y - ((lines.length - 1) * lineHeight) / 2;
+            
+            lines.forEach((line, index) => {
+                const lineY = startY + (index * lineHeight);
+                // Draw text stroke (outline)
+                ctx.strokeText(line, x, lineY);
+                // Draw text fill
+                ctx.fillText(line, x, lineY);
+            });
+        }
+        
+        // Draw top text
+        if (topText) {
+            const topY = fontSize * 1.5; // Padding from top
+            drawMemeText(topText, image.width / 2, topY, image.width * 0.9);
+        }
+        
+        // Draw bottom text
+        if (bottomText) {
+            const bottomY = image.height - (fontSize * 1.5); // Padding from bottom
+            drawMemeText(bottomText, image.width / 2, bottomY, image.width * 0.9);
+        }
+        
+        // Convert canvas to buffer
+        const buffer = canvas.toBuffer('image/png');
+        
+        // Create Discord attachment
+        const captionedImage = new AttachmentBuilder(buffer, { name: 'meme.png' });
+        
+        // Create embed
+        const embed = new EmbedBuilder()
+            .setTitle('🎭 Custom Meme Created!')
+            .setDescription(`${topText ? `**Top:** ${topText}\n` : ''}${bottomText ? `**Bottom:** ${bottomText}` : ''}`)
+            .setImage('attachment://meme.png')
+            .setColor(0xFFD700)
+            .setFooter({ text: 'Made with 🧀 by AquaCheese' });
+        
+        await interaction.editReply({ 
+            embeds: [embed], 
+            files: [captionedImage] 
+        });
+        
+    } catch (error) {
+        console.error('Error creating meme:', error);
+        await interaction.editReply({ 
+            content: '❌ An error occurred while creating the meme. Please try again with a different image.' 
+        });
     }
 }
 
