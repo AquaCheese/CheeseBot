@@ -665,7 +665,82 @@ const commands = [
     new SlashCommandBuilder()
         .setName('fontsetup')
         .setDescription('Get instructions for installing the Impact font for better meme quality')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    
+    new SlashCommandBuilder()
+        .setName('goal')
+        .setDescription('Manage server goals and progress tracking')
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('set')
+                .setDescription('Set a new server goal')
+                .addStringOption(option =>
+                    option.setName('type')
+                        .setDescription('Type of goal to set')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: '🚀 Server Boosts', value: 'boosts' },
+                            { name: '👥 Member Count', value: 'members' },
+                            { name: '💬 Message Count', value: 'messages' },
+                            { name: '🎉 Event Participation', value: 'events' },
+                            { name: '⭐ Reaction Count', value: 'reactions' },
+                            { name: '🏆 Custom Goal', value: 'custom' }
+                        ))
+                .addIntegerOption(option =>
+                    option.setName('target')
+                        .setDescription('Target amount to reach (e.g., 50 for 50 boosts)')
+                        .setRequired(true)
+                        .setMinValue(1)
+                        .setMaxValue(100000))
+                .addStringOption(option =>
+                    option.setName('title')
+                        .setDescription('Custom title for your goal (optional)')
+                        .setRequired(false)
+                        .setMaxLength(100))
+                .addStringOption(option =>
+                    option.setName('description')
+                        .setDescription('Description of what happens when goal is reached')
+                        .setRequired(false)
+                        .setMaxLength(500))
+                .addStringOption(option =>
+                    option.setName('emoji')
+                        .setDescription('Custom emoji for the goal (optional)')
+                        .setRequired(false)
+                        .setMaxLength(50)))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('view')
+                .setDescription('View current server goals and progress'))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('update')
+                .setDescription('Manually update goal progress (for custom goals)')
+                .addIntegerOption(option =>
+                    option.setName('goal_id')
+                        .setDescription('Goal ID to update')
+                        .setRequired(true))
+                .addIntegerOption(option =>
+                    option.setName('progress')
+                        .setDescription('New progress amount')
+                        .setRequired(true)
+                        .setMinValue(0)))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('delete')
+                .setDescription('Delete a goal')
+                .addIntegerOption(option =>
+                    option.setName('goal_id')
+                        .setDescription('Goal ID to delete')
+                        .setRequired(true)))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('celebrate')
+                .setDescription('Manually trigger goal celebration')
+                .addIntegerOption(option =>
+                    option.setName('goal_id')
+                        .setDescription('Goal ID to celebrate')
+                        .setRequired(true)))
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
 ];
 
 // Get current bot version from package.json
@@ -2043,7 +2118,7 @@ async function handleSlashCommand(interaction) {
 
     try {
         // Commands that don't require authentication
-        const publicCommands = ['login', 'status', 'afk', 'ascii', 'suggest', 'report', 'birthday', 'anonymous', 'userstats', 'countleaderboard', 'counthistory', 'yt', 'aquacheese', 'caption'];
+        const publicCommands = ['login', 'status', 'afk', 'ascii', 'suggest', 'report', 'birthday', 'anonymous', 'userstats', 'countleaderboard', 'counthistory', 'yt', 'aquacheese', 'caption', 'goal'];
         
         if (!publicCommands.includes(commandName)) {
             // Special check for user command - only primary admin can use it
@@ -2243,6 +2318,10 @@ async function handleSlashCommand(interaction) {
             
             case 'fontsetup':
                 await handleFontSetupCommand(interaction);
+                break;
+            
+            case 'goal':
+                await handleGoalCommand(interaction);
                 break;
             
             case 'testnotification':
@@ -6417,6 +6496,13 @@ client.on(Events.MessageCreate, async message => {
 // Listen for member joins to check for raids
 client.on(Events.GuildMemberAdd, async member => {
     await moderationSystem.checkRaidProtection(member);
+    
+    // Update member count goals
+    try {
+        await database.updateMemberGoals(member.guild.id, member.guild.memberCount);
+    } catch (error) {
+        console.error('Error updating member goals on join:', error);
+    }
 });
 
 // Anti-Nuke Protection Event Listeners
@@ -6545,6 +6631,13 @@ client.on(Events.GuildMemberRemove, async member => {
         } else {
             console.error('Error checking member removal audit logs:', error);
         }
+    }
+    
+    // Update member count goals
+    try {
+        await database.updateMemberGoals(member.guild.id, member.guild.memberCount);
+    } catch (error) {
+        console.error('Error updating member goals on leave:', error);
     }
 });
 
@@ -6686,6 +6779,100 @@ client.on(Events.GuildDelete, async guild => {
         
     } catch (error) {
         console.error(`Error handling guild leave for ${guild.name}:`, error);
+    }
+});
+
+// Handle guild updates (boost tracking)
+client.on(Events.GuildUpdate, async (oldGuild, newGuild) => {
+    try {
+        // Check if boost count changed
+        if (oldGuild.premiumSubscriptionCount !== newGuild.premiumSubscriptionCount) {
+            console.log(`🚀 Boost count changed in ${newGuild.name}: ${oldGuild.premiumSubscriptionCount} → ${newGuild.premiumSubscriptionCount}`);
+            
+            // Update boost goals
+            const updates = await database.updateBoostGoals(newGuild.id, newGuild.premiumSubscriptionCount);
+            
+            // Check if any goals were completed
+            for (const update of updates) {
+                if (update.isCompleted && !update.wasCompleted) {
+                    console.log(`🎉 Boost goal completed in ${newGuild.name}!`);
+                    
+                    // Try to find a suitable channel to announce the completion
+                    const goal = await database.getGoalById(update.goalId);
+                    if (goal) {
+                        try {
+                            // Try to use the system channel, or find a general channel
+                            let announcementChannel = newGuild.systemChannel;
+                            
+                            if (!announcementChannel) {
+                                // Find a channel named 'general', 'announcements', etc.
+                                announcementChannel = newGuild.channels.cache.find(channel => 
+                                    channel.type === 0 && // Text channel
+                                    (channel.name.includes('general') || 
+                                     channel.name.includes('announcement') ||
+                                     channel.name.includes('goal')) &&
+                                    channel.permissionsFor(newGuild.members.me)?.has('SendMessages')
+                                );
+                            }
+                            
+                            if (!announcementChannel) {
+                                // Find any text channel we can send to
+                                announcementChannel = newGuild.channels.cache.find(channel => 
+                                    channel.type === 0 && 
+                                    channel.permissionsFor(newGuild.members.me)?.has('SendMessages')
+                                );
+                            }
+                            
+                            if (announcementChannel) {
+                                const progressPercent = Math.min(100, Math.round((update.newProgress / goal.target_amount) * 100));
+                                const progressBar = createProgressBar(progressPercent);
+                                
+                                const celebrationEmbed = new EmbedBuilder()
+                                    .setTitle(`🎉 BOOST GOAL COMPLETED! 🚀`)
+                                    .setDescription(`**${goal.title}** has been achieved!\n\n${goal.description}`)
+                                    .addFields(
+                                        { name: '🎯 Target', value: goal.target_amount.toLocaleString(), inline: true },
+                                        { name: '🚀 Current Boosts', value: update.newProgress.toLocaleString(), inline: true },
+                                        { name: '📈 Progress', value: `${progressBar} **${progressPercent}%**`, inline: false },
+                                        { name: '🎊 Achievement Unlocked!', value: 'Thank you to everyone who boosted the server!', inline: false }
+                                    )
+                                    .setColor(0xFFD700)
+                                    .setFooter({ text: 'Automatic goal completion • Server Boost Tracking' })
+                                    .setTimestamp();
+                                
+                                const celebrationMessage = await announcementChannel.send({ embeds: [celebrationEmbed] });
+                                
+                                // Add celebration reactions
+                                try {
+                                    await celebrationMessage.react('🎉');
+                                    await celebrationMessage.react('🚀');
+                                    await celebrationMessage.react('🥳');
+                                } catch (reactionError) {
+                                    console.log('Could not add celebration reactions:', reactionError.message);
+                                }
+                                
+                                // Log the celebration
+                                await database.logGoalCelebration(goal.id, goal.guild_id, {
+                                    messageId: celebrationMessage.id,
+                                    channelId: announcementChannel.id,
+                                    progress: update.newProgress
+                                });
+                            }
+                        } catch (announcementError) {
+                            console.error('Error sending goal completion announcement:', announcementError);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Check if member count changed (for member goals)
+        if (oldGuild.memberCount !== newGuild.memberCount) {
+            await database.updateMemberGoals(newGuild.id, newGuild.memberCount);
+        }
+        
+    } catch (error) {
+        console.error('Error handling guild update for goal tracking:', error);
     }
 });
 
@@ -9633,6 +9820,330 @@ async function handleFontSetupCommand(interaction) {
         await interaction.editReply({ 
             content: '❌ An error occurred while checking font setup. Please try again.' 
         });
+    }
+}
+
+// Goal system command handler
+async function handleGoalCommand(interaction) {
+    await interaction.deferReply();
+    
+    try {
+        const subcommand = interaction.options.getSubcommand();
+        
+        switch (subcommand) {
+            case 'set':
+                await handleGoalSet(interaction);
+                break;
+            case 'view':
+                await handleGoalView(interaction);
+                break;
+            case 'update':
+                await handleGoalUpdate(interaction);
+                break;
+            case 'delete':
+                await handleGoalDelete(interaction);
+                break;
+            case 'celebrate':
+                await handleGoalCelebrate(interaction);
+                break;
+            default:
+                await interaction.editReply({ content: '❌ Unknown goal subcommand.' });
+        }
+    } catch (error) {
+        console.error('Error in goal command:', error);
+        await interaction.editReply({ content: '❌ An error occurred while processing the goal command.' });
+    }
+}
+
+// Goal set subcommand
+async function handleGoalSet(interaction) {
+    const goalType = interaction.options.getString('type');
+    const target = interaction.options.getInteger('target');
+    const customTitle = interaction.options.getString('title');
+    const description = interaction.options.getString('description');
+    const emoji = interaction.options.getString('emoji');
+    
+    // Define goal types and their properties
+    const goalTypes = {
+        'boosts': { title: 'Server Boosts', emoji: '🚀', autoTrack: true },
+        'members': { title: 'Member Count', emoji: '👥', autoTrack: true },
+        'messages': { title: 'Message Count', emoji: '💬', autoTrack: false },
+        'events': { title: 'Event Participation', emoji: '🎉', autoTrack: false },
+        'reactions': { title: 'Reaction Count', emoji: '⭐', autoTrack: false },
+        'custom': { title: 'Custom Goal', emoji: '🏆', autoTrack: false }
+    };
+    
+    const goalInfo = goalTypes[goalType];
+    if (!goalInfo) {
+        return await interaction.editReply({ content: '❌ Invalid goal type selected.' });
+    }
+    
+    // Create goal data
+    const goalData = {
+        type: goalType,
+        title: customTitle || goalInfo.title,
+        description: description || `Reach ${target} ${goalInfo.title.toLowerCase()}!`,
+        emoji: emoji || goalInfo.emoji,
+        target: target,
+        createdBy: interaction.user.id
+    };
+    
+    try {
+        const goalId = await database.createGoal(interaction.guild.id, goalData);
+        
+        // If it's an auto-tracked goal, set initial progress
+        if (goalInfo.autoTrack) {
+            let currentProgress = 0;
+            
+            if (goalType === 'boosts') {
+                currentProgress = interaction.guild.premiumSubscriptionCount || 0;
+                await database.updateGoalProgress(goalId, currentProgress, 'system', 'initial_setup');
+            } else if (goalType === 'members') {
+                currentProgress = interaction.guild.memberCount || 0;
+                await database.updateGoalProgress(goalId, currentProgress, 'system', 'initial_setup');
+            }
+        }
+        
+        // Create progress bar
+        const progressPercent = goalInfo.autoTrack ? 
+            Math.min(100, Math.round((currentProgress / target) * 100)) : 0;
+        const progressBar = createProgressBar(progressPercent);
+        
+        const embed = new EmbedBuilder()
+            .setTitle(`${goalData.emoji} Goal Created Successfully!`)
+            .setDescription(`**${goalData.title}**\n${goalData.description}`)
+            .addFields(
+                { name: '🎯 Target', value: target.toLocaleString(), inline: true },
+                { name: '📊 Current Progress', value: goalInfo.autoTrack ? currentProgress.toLocaleString() : '0', inline: true },
+                { name: '📈 Progress', value: `${progressBar} ${progressPercent}%`, inline: false },
+                { name: '🤖 Auto-Tracking', value: goalInfo.autoTrack ? '✅ Enabled' : '❌ Manual Updates Only', inline: true },
+                { name: '🆔 Goal ID', value: `#${goalId}`, inline: true }
+            )
+            .setColor(0x00FF00)
+            .setFooter({ text: `Created by ${interaction.user.tag} • Use /goal view to see all goals` })
+            .setTimestamp();
+        
+        await interaction.editReply({ embeds: [embed] });
+        
+    } catch (error) {
+        console.error('Error creating goal:', error);
+        await interaction.editReply({ content: '❌ Failed to create goal. Please try again.' });
+    }
+}
+
+// Goal view subcommand
+async function handleGoalView(interaction) {
+    try {
+        const goals = await database.getServerGoals(interaction.guild.id, true);
+        
+        if (goals.length === 0) {
+            const embed = new EmbedBuilder()
+                .setTitle('📊 Server Goals')
+                .setDescription('No active goals found for this server.\n\nUse `/goal set` to create your first goal!')
+                .setColor(0x3498DB)
+                .setFooter({ text: 'Goal Tracking System' });
+            
+            return await interaction.editReply({ embeds: [embed] });
+        }
+        
+        const embed = new EmbedBuilder()
+            .setTitle(`📊 ${interaction.guild.name} Goals`)
+            .setDescription(`Tracking ${goals.length} active goal${goals.length === 1 ? '' : 's'}`)
+            .setColor(0x3498DB)
+            .setThumbnail(interaction.guild.iconURL())
+            .setTimestamp();
+        
+        for (const goal of goals.slice(0, 5)) { // Limit to 5 goals to avoid embed limits
+            const progressPercent = Math.min(100, Math.round((goal.current_progress / goal.target_amount) * 100));
+            const progressBar = createProgressBar(progressPercent);
+            const isCompleted = goal.is_completed;
+            
+            const statusIcon = isCompleted ? '✅' : '🔄';
+            const progressText = `${goal.current_progress.toLocaleString()} / ${goal.target_amount.toLocaleString()}`;
+            
+            embed.addFields({
+                name: `${statusIcon} ${goal.emoji} ${goal.title} (#${goal.id})`,
+                value: `${goal.description}\n📈 ${progressBar} **${progressPercent}%**\n📊 Progress: ${progressText}${isCompleted ? '\n🎉 **COMPLETED!**' : ''}`,
+                inline: false
+            });
+        }
+        
+        if (goals.length > 5) {
+            embed.setFooter({ text: `Showing 5 of ${goals.length} goals • Use goal ID for specific actions` });
+        } else {
+            embed.setFooter({ text: 'Goal Tracking System • Use /goal set to add more goals' });
+        }
+        
+        await interaction.editReply({ embeds: [embed] });
+        
+    } catch (error) {
+        console.error('Error viewing goals:', error);
+        await interaction.editReply({ content: '❌ Failed to retrieve goals. Please try again.' });
+    }
+}
+
+// Goal update subcommand
+async function handleGoalUpdate(interaction) {
+    const goalId = interaction.options.getInteger('goal_id');
+    const newProgress = interaction.options.getInteger('progress');
+    
+    try {
+        const goal = await database.getGoalById(goalId);
+        
+        if (!goal || goal.guild_id !== interaction.guild.id) {
+            return await interaction.editReply({ content: '❌ Goal not found or belongs to a different server.' });
+        }
+        
+        if (!goal.is_active) {
+            return await interaction.editReply({ content: '❌ Cannot update an inactive goal.' });
+        }
+        
+        if (newProgress < 0 || newProgress > goal.target_amount * 2) {
+            return await interaction.editReply({ 
+                content: `❌ Progress must be between 0 and ${(goal.target_amount * 2).toLocaleString()}.` 
+            });
+        }
+        
+        const result = await database.updateGoalProgress(goalId, newProgress, interaction.user.id, 'manual_update');
+        
+        const progressPercent = Math.min(100, Math.round((newProgress / goal.target_amount) * 100));
+        const progressBar = createProgressBar(progressPercent);
+        const changeIcon = result.changeAmount > 0 ? '📈' : result.changeAmount < 0 ? '📉' : '➡️';
+        const changeText = result.changeAmount !== 0 ? 
+            `${changeIcon} ${result.changeAmount > 0 ? '+' : ''}${result.changeAmount.toLocaleString()}` : '';
+        
+        const embed = new EmbedBuilder()
+            .setTitle(`${goal.emoji} Goal Updated!`)
+            .setDescription(`**${goal.title}** progress has been updated.`)
+            .addFields(
+                { name: '📊 New Progress', value: `${newProgress.toLocaleString()} / ${goal.target_amount.toLocaleString()}`, inline: true },
+                { name: '📈 Percentage', value: `${progressPercent}%`, inline: true },
+                { name: '🔄 Change', value: changeText || 'No change', inline: true },
+                { name: '📈 Progress Bar', value: progressBar, inline: false }
+            )
+            .setColor(result.isCompleted ? 0x00FF00 : 0x3498DB)
+            .setFooter({ text: `Updated by ${interaction.user.tag}` })
+            .setTimestamp();
+        
+        if (result.isCompleted && !result.wasCompleted) {
+            embed.addFields({ name: '🎉 Congratulations!', value: 'This goal has been completed!', inline: false });
+            await handleGoalCompletion(interaction, goal, newProgress);
+        }
+        
+        await interaction.editReply({ embeds: [embed] });
+        
+    } catch (error) {
+        console.error('Error updating goal:', error);
+        await interaction.editReply({ content: '❌ Failed to update goal progress. Please try again.' });
+    }
+}
+
+// Goal delete subcommand
+async function handleGoalDelete(interaction) {
+    const goalId = interaction.options.getInteger('goal_id');
+    
+    try {
+        const goal = await database.getGoalById(goalId);
+        
+        if (!goal || goal.guild_id !== interaction.guild.id) {
+            return await interaction.editReply({ content: '❌ Goal not found or belongs to a different server.' });
+        }
+        
+        const success = await database.deleteGoal(goalId);
+        
+        if (success) {
+            const embed = new EmbedBuilder()
+                .setTitle('🗑️ Goal Deleted')
+                .setDescription(`**${goal.title}** has been removed from the active goals list.`)
+                .addFields(
+                    { name: '🆔 Goal ID', value: `#${goalId}`, inline: true },
+                    { name: '📊 Final Progress', value: `${goal.current_progress.toLocaleString()} / ${goal.target_amount.toLocaleString()}`, inline: true }
+                )
+                .setColor(0xE74C3C)
+                .setFooter({ text: `Deleted by ${interaction.user.tag}` })
+                .setTimestamp();
+            
+            await interaction.editReply({ embeds: [embed] });
+        } else {
+            await interaction.editReply({ content: '❌ Failed to delete goal. It may have already been deleted.' });
+        }
+        
+    } catch (error) {
+        console.error('Error deleting goal:', error);
+        await interaction.editReply({ content: '❌ Failed to delete goal. Please try again.' });
+    }
+}
+
+// Goal celebrate subcommand
+async function handleGoalCelebrate(interaction) {
+    const goalId = interaction.options.getInteger('goal_id');
+    
+    try {
+        const goal = await database.getGoalById(goalId);
+        
+        if (!goal || goal.guild_id !== interaction.guild.id) {
+            return await interaction.editReply({ content: '❌ Goal not found or belongs to a different server.' });
+        }
+        
+        await handleGoalCompletion(interaction, goal, goal.current_progress, true);
+        
+    } catch (error) {
+        console.error('Error celebrating goal:', error);
+        await interaction.editReply({ content: '❌ Failed to celebrate goal. Please try again.' });
+    }
+}
+
+// Helper function to create progress bars
+function createProgressBar(percentage, length = 20) {
+    const clampedPercent = Math.max(0, Math.min(100, percentage)); // Clamp between 0-100
+    const filled = Math.round((clampedPercent / 100) * length);
+    const empty = Math.max(0, length - filled); // Ensure no negative values
+    const filledChar = '█';
+    const emptyChar = '░';
+    
+    return `${filledChar.repeat(filled)}${emptyChar.repeat(empty)}`;
+}
+
+// Handle goal completion celebration
+async function handleGoalCompletion(interaction, goal, currentProgress, manualCelebration = false) {
+    try {
+        const progressPercent = Math.min(100, Math.round((currentProgress / goal.target_amount) * 100));
+        const progressBar = createProgressBar(progressPercent);
+        
+        const celebrationEmbed = new EmbedBuilder()
+            .setTitle(`🎉 GOAL COMPLETED! ${goal.emoji}`)
+            .setDescription(`**${goal.title}** has been achieved!\n\n${goal.description}`)
+            .addFields(
+                { name: '🎯 Target', value: goal.target_amount.toLocaleString(), inline: true },
+                { name: '📊 Final Result', value: currentProgress.toLocaleString(), inline: true },
+                { name: '📈 Progress', value: `${progressBar} **${progressPercent}%**`, inline: false },
+                { name: '🎊 Achievement Unlocked!', value: 'Congratulations to everyone who contributed to reaching this goal!', inline: false }
+            )
+            .setColor(0xFFD700)
+            .setFooter({ text: manualCelebration ? `Manual celebration by ${interaction.user.tag}` : 'Automatic goal completion' })
+            .setTimestamp();
+        
+        // Send celebration to current channel
+        const celebrationMessage = await interaction.followUp({ embeds: [celebrationEmbed] });
+        
+        // Log the celebration
+        await database.logGoalCelebration(goal.id, goal.guild_id, {
+            messageId: celebrationMessage.id,
+            channelId: interaction.channel.id,
+            progress: currentProgress
+        });
+        
+        // Add reactions for celebration
+        try {
+            await celebrationMessage.react('🎉');
+            await celebrationMessage.react('🎊');
+            await celebrationMessage.react('🥳');
+        } catch (reactionError) {
+            console.log('Could not add celebration reactions:', reactionError.message);
+        }
+        
+    } catch (error) {
+        console.error('Error handling goal completion:', error);
     }
 }
 

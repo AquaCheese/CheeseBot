@@ -426,6 +426,54 @@ class Database {
             )
         `);
 
+        // Goal system tables
+        this.db.run(`
+            CREATE TABLE IF NOT EXISTS server_goals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT,
+                goal_type TEXT,
+                title TEXT,
+                description TEXT,
+                emoji TEXT DEFAULT '🎯',
+                target_amount INTEGER,
+                current_progress INTEGER DEFAULT 0,
+                is_active BOOLEAN DEFAULT 1,
+                is_completed BOOLEAN DEFAULT 0,
+                completed_at DATETIME,
+                created_by TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        this.db.run(`
+            CREATE TABLE IF NOT EXISTS goal_progress_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                goal_id INTEGER,
+                guild_id TEXT,
+                previous_progress INTEGER,
+                new_progress INTEGER,
+                change_amount INTEGER,
+                change_type TEXT,
+                updated_by TEXT,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (goal_id) REFERENCES server_goals (id)
+            )
+        `);
+
+        this.db.run(`
+            CREATE TABLE IF NOT EXISTS goal_celebrations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                goal_id INTEGER,
+                guild_id TEXT,
+                celebrated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                celebration_message_id TEXT,
+                celebration_channel_id TEXT,
+                progress_at_celebration INTEGER,
+                FOREIGN KEY (goal_id) REFERENCES server_goals (id)
+            )
+        `);
+
         // Run migrations
         this.runMigrations();
         
@@ -2067,6 +2115,230 @@ class Database {
                 (err, row) => {
                     if (err) reject(err);
                     else resolve(row);
+                }
+            );
+        });
+    }
+
+    // Goal system methods
+    async createGoal(guildId, goalData) {
+        return new Promise((resolve, reject) => {
+            this.db.run(
+                `INSERT INTO server_goals 
+                (guild_id, goal_type, title, description, emoji, target_amount, created_by) 
+                VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    guildId,
+                    goalData.type,
+                    goalData.title,
+                    goalData.description,
+                    goalData.emoji || '🎯',
+                    goalData.target,
+                    goalData.createdBy
+                ],
+                function(err) {
+                    if (err) reject(err);
+                    else resolve(this.lastID);
+                }
+            );
+        });
+    }
+
+    async getServerGoals(guildId, activeOnly = true) {
+        return new Promise((resolve, reject) => {
+            const query = activeOnly 
+                ? 'SELECT * FROM server_goals WHERE guild_id = ? AND is_active = 1 ORDER BY created_at DESC'
+                : 'SELECT * FROM server_goals WHERE guild_id = ? ORDER BY created_at DESC';
+            
+            this.db.all(query, [guildId], (err, rows) => {
+                if (err) reject(err);
+                else resolve(rows || []);
+            });
+        });
+    }
+
+    async getGoalById(goalId) {
+        return new Promise((resolve, reject) => {
+            this.db.get(
+                'SELECT * FROM server_goals WHERE id = ?',
+                [goalId],
+                (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                }
+            );
+        });
+    }
+
+    async updateGoalProgress(goalId, newProgress, updatedBy, changeType = 'manual') {
+        return new Promise((resolve, reject) => {
+            // First get current progress
+            this.db.get('SELECT * FROM server_goals WHERE id = ?', [goalId], (err, goal) => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+                
+                if (!goal) {
+                    reject(new Error('Goal not found'));
+                    return;
+                }
+
+                const previousProgress = goal.current_progress;
+                const changeAmount = newProgress - previousProgress;
+                const isCompleted = newProgress >= goal.target_amount;
+
+                // Update goal progress
+                this.db.run(
+                    `UPDATE server_goals 
+                    SET current_progress = ?, 
+                        is_completed = ?, 
+                        completed_at = ?,
+                        updated_at = CURRENT_TIMESTAMP 
+                    WHERE id = ?`,
+                    [newProgress, isCompleted, isCompleted ? new Date().toISOString() : null, goalId],
+                    (err) => {
+                        if (err) {
+                            reject(err);
+                            return;
+                        }
+
+                        // Log progress change
+                        this.db.run(
+                            `INSERT INTO goal_progress_history 
+                            (goal_id, guild_id, previous_progress, new_progress, change_amount, change_type, updated_by)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                            [goalId, goal.guild_id, previousProgress, newProgress, changeAmount, changeType, updatedBy],
+                            (err) => {
+                                if (err) {
+                                    reject(err);
+                                } else {
+                                    resolve({
+                                        goalId,
+                                        previousProgress,
+                                        newProgress,
+                                        changeAmount,
+                                        isCompleted,
+                                        wasCompleted: goal.is_completed
+                                    });
+                                }
+                            }
+                        );
+                    }
+                );
+            });
+        });
+    }
+
+    async deleteGoal(goalId) {
+        return new Promise((resolve, reject) => {
+            this.db.run(
+                'UPDATE server_goals SET is_active = 0 WHERE id = ?',
+                [goalId],
+                function(err) {
+                    if (err) reject(err);
+                    else resolve(this.changes > 0);
+                }
+            );
+        });
+    }
+
+    async logGoalCelebration(goalId, guildId, celebrationData) {
+        return new Promise((resolve, reject) => {
+            this.db.run(
+                `INSERT INTO goal_celebrations 
+                (goal_id, guild_id, celebration_message_id, celebration_channel_id, progress_at_celebration)
+                VALUES (?, ?, ?, ?, ?)`,
+                [
+                    goalId,
+                    guildId,
+                    celebrationData.messageId,
+                    celebrationData.channelId,
+                    celebrationData.progress
+                ],
+                function(err) {
+                    if (err) reject(err);
+                    else resolve(this.lastID);
+                }
+            );
+        });
+    }
+
+    async getGoalProgressHistory(goalId, limit = 10) {
+        return new Promise((resolve, reject) => {
+            this.db.all(
+                'SELECT * FROM goal_progress_history WHERE goal_id = ? ORDER BY updated_at DESC LIMIT ?',
+                [goalId, limit],
+                (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows || []);
+                }
+            );
+        });
+    }
+
+    // Auto-tracking methods for different goal types
+    async updateBoostGoals(guildId, currentBoosts) {
+        return new Promise((resolve, reject) => {
+            this.db.all(
+                'SELECT * FROM server_goals WHERE guild_id = ? AND goal_type = ? AND is_active = 1',
+                [guildId, 'boosts'],
+                async (err, goals) => {
+                    if (err) {
+                        reject(err);
+                        return;
+                    }
+
+                    const updates = [];
+                    for (const goal of goals) {
+                        if (goal.current_progress !== currentBoosts) {
+                            try {
+                                const result = await this.updateGoalProgress(
+                                    goal.id, 
+                                    currentBoosts, 
+                                    'system', 
+                                    'auto_boost_update'
+                                );
+                                updates.push(result);
+                            } catch (error) {
+                                console.error('Error updating boost goal:', error);
+                            }
+                        }
+                    }
+                    resolve(updates);
+                }
+            );
+        });
+    }
+
+    async updateMemberGoals(guildId, currentMembers) {
+        return new Promise((resolve, reject) => {
+            this.db.all(
+                'SELECT * FROM server_goals WHERE guild_id = ? AND goal_type = ? AND is_active = 1',
+                [guildId, 'members'],
+                async (err, goals) => {
+                    if (err) {
+                        reject(err);
+                        return;
+                    }
+
+                    const updates = [];
+                    for (const goal of goals) {
+                        if (goal.current_progress !== currentMembers) {
+                            try {
+                                const result = await this.updateGoalProgress(
+                                    goal.id, 
+                                    currentMembers, 
+                                    'system', 
+                                    'auto_member_update'
+                                );
+                                updates.push(result);
+                            } catch (error) {
+                                console.error('Error updating member goal:', error);
+                            }
+                        }
+                    }
+                    resolve(updates);
                 }
             );
         });
