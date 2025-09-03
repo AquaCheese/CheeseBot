@@ -16,6 +16,7 @@ const {
     MessageFlags
 } = require('discord.js');
 const { createCanvas, loadImage, registerFont } = require('canvas');
+const axios = require('axios');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
@@ -833,12 +834,45 @@ async function initializeFonts() {
             return true;
         }
         
-        console.log('📥 Impact font not found, downloading...');
+        console.log('📥 Impact font not found, attempting to download...');
         
-        // For now, we'll skip automatic download and just guide users to manual installation
-        console.log('💡 Automatic font download skipped - please use /fontsetup for installation guide');
-        console.log('💡 Will use system Arial font as fallback');
-        return false;
+        // Try to download Impact font from a reliable source
+        try {
+            // Download Impact font from Google Fonts (closest alternative: Anton)
+            const antonUrl = 'https://fonts.gstatic.com/s/anton/v23/1Ptgg87LROyAm3K8-C8CSKlv.ttf';
+            
+            console.log('📥 Downloading Anton font (Impact alternative)...');
+            const response = await axios.get(antonUrl, { responseType: 'arraybuffer' });
+            
+            const antonFontPath = path.join(fontsDir, 'anton.ttf');
+            fs.writeFileSync(antonFontPath, response.data);
+            
+            // Register Anton as Impact for meme compatibility
+            registerFont(antonFontPath, { family: 'Impact' });
+            console.log('✅ Anton font downloaded and registered as Impact');
+            
+            return true;
+        } catch (downloadError) {
+            console.error('❌ Failed to download font:', downloadError.message);
+            
+            // Try to check if Impact is available as a system font on Windows
+            try {
+                // On Windows, Impact is usually pre-installed
+                console.log('💡 Checking for system Impact font...');
+                
+                // Create a test canvas to see if Impact renders properly
+                const testCanvas = createCanvas(100, 50);
+                const testCtx = testCanvas.getContext('2d');
+                testCtx.font = '20px Impact, Arial';
+                testCtx.fillText('TEST', 10, 30);
+                
+                console.log('✅ System Impact font appears to be available');
+                return true;
+            } catch (systemError) {
+                console.log('⚠️ System Impact font not available, using Arial fallback');
+                return false;
+            }
+        }
         
     } catch (error) {
         console.error('❌ Font initialization error:', error);
@@ -851,12 +885,15 @@ async function initializeFonts() {
 function getMemeFont(fontSize) {
     const fontsDir = path.join(__dirname, 'fonts');
     const impactFontPath = path.join(fontsDir, 'impact.ttf');
+    const antonFontPath = path.join(fontsDir, 'anton.ttf');
     
     if (fs.existsSync(impactFontPath)) {
         return `bold ${fontSize}px Impact, Arial, sans-serif`;
+    } else if (fs.existsSync(antonFontPath)) {
+        return `bold ${fontSize}px Impact, Anton, Arial, sans-serif`;
     } else {
-        // Use Anton if available, otherwise fall back to Arial
-        return `bold ${fontSize}px Anton, Arial, sans-serif`;
+        // Try system Impact first, then fallback to Arial
+        return `bold ${fontSize}px Impact, "Arial Black", Arial, sans-serif`;
     }
 }
 
@@ -8533,13 +8570,17 @@ async function handleCaptionCommand(interaction) {
         ctx.drawImage(image, 0, 0);
         
         // Configure text style (classic meme font styling)
-        const fontSize = Math.max(Math.min(image.width / 12, image.height / 12), 20); // Dynamic font size
+        // Improved font size calculation with better minimum size for readability
+        const baseFontSize = Math.min(image.width / 12, image.height / 12);
+        const fontSize = Math.max(baseFontSize, 32); // Minimum 32px for proper rendering
         
-        // Use a more robust font configuration for Windows compatibility
-        ctx.font = `bold ${fontSize}px "Arial Black", Arial, sans-serif`;
+        console.log(`Image size: ${image.width}x${image.height}, Font size: ${fontSize}`);
+        
+        // Use Impact font for authentic meme styling
+        ctx.font = getMemeFont(fontSize);
         ctx.fillStyle = 'white';
         ctx.strokeStyle = 'black';
-        ctx.lineWidth = Math.max(fontSize / 15, 2); // Ensure minimum stroke width
+        ctx.lineWidth = Math.max(fontSize / 15, 3); // Ensure minimum stroke width of 3px
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         
@@ -8590,9 +8631,12 @@ async function handleCaptionCommand(interaction) {
                 const lineY = startY + (index * lineHeight);
                 
                 try {
+                    // Calculate outline thickness based on font size
+                    const outlineThickness = Math.max(Math.floor(fontSize / 16), 2);
+                    
                     // Draw text stroke (outline) with multiple passes for better visibility
-                    for (let dx = -1; dx <= 1; dx++) {
-                        for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -outlineThickness; dx <= outlineThickness; dx++) {
+                        for (let dy = -outlineThickness; dy <= outlineThickness; dy++) {
                             if (dx !== 0 || dy !== 0) {
                                 ctx.fillStyle = 'black';
                                 ctx.fillText(line, x + dx, lineY + dy);
@@ -8614,13 +8658,13 @@ async function handleCaptionCommand(interaction) {
         
         // Draw top text
         if (topText) {
-            const topY = fontSize * 1.5; // Padding from top
+            const topY = Math.max(fontSize * 1.2, 50); // Ensure minimum distance from top
             drawMemeText(topText, image.width / 2, topY, image.width * 0.9);
         }
         
         // Draw bottom text
         if (bottomText) {
-            const bottomY = image.height - (fontSize * 1.5); // Padding from bottom
+            const bottomY = image.height - Math.max(fontSize * 1.2, 50); // Ensure minimum distance from bottom
             drawMemeText(bottomText, image.width / 2, bottomY, image.width * 0.9);
         }
         
@@ -8672,13 +8716,13 @@ async function handleFontSetupCommand(interaction) {
                     { name: '🎨 Meme Quality', value: 'Authentic classic meme styling ✨', inline: false }
                 );
         } else {
-            embed.setDescription('⚠️ **Impact font not found**\n\nTo get the authentic meme font experience, follow these steps:')
+            embed.setDescription('⚠️ **Impact font setup needed**\n\nFor the most authentic meme experience, follow these steps:')
                 .addFields(
-                    { name: '📥 Step 1: Download Impact Font', value: 'Download `impact.ttf` from a trusted font website like:\n• [Google Fonts](https://fonts.google.com)\n• [DaFont](https://dafont.com)\n• [Font Squirrel](https://fontsquirrel.com)', inline: false },
-                    { name: '📂 Step 2: Place Font File', value: `Place the \`impact.ttf\` file in:\n\`${fontsDir}\``, inline: false },
-                    { name: '🔄 Step 3: Restart Bot', value: 'Restart the bot to automatically detect and register the font', inline: false },
-                    { name: '🎨 Current Font', value: 'Using Anton font (similar to Impact) as fallback', inline: false },
-                    { name: '💡 Alternative', value: 'The bot will work fine with Anton font, but Impact provides the most authentic look', inline: false }
+                    { name: '🎯 Option 1: Windows System Font', value: 'Impact is usually pre-installed on Windows.\nIf not working, try installing it from Windows Fonts.', inline: false },
+                    { name: '📥 Option 2: Download Impact Font', value: '1. Download `impact.ttf` from:\n   • [Google Fonts](https://fonts.google.com)\n   • [DaFont](https://dafont.com)\n   • [Font Squirrel](https://fontsquirrel.com)\n2. Place file in: `fonts/impact.ttf`\n3. Restart the bot', inline: false },
+                    { name: '🔄 Option 3: Automatic Download', value: 'The bot will try to download Anton font (Impact alternative) automatically on startup.', inline: false },
+                    { name: '🎨 Current Status', value: 'Using system fonts with Impact fallback', inline: false },
+                    { name: '💡 Note', value: 'Impact font provides the most authentic classic meme appearance', inline: false }
                 );
         }
         

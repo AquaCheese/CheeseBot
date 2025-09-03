@@ -17,11 +17,12 @@ The `/caption` command allows users to create custom memes by adding text to ima
 - **Note**: At least one text parameter (top_text or bottom_text) must be provided
 
 ## Features
-- **Classic Meme Font**: Uses bold Arial with white text and black outline
+- **Classic Impact Font**: Uses the authentic Impact font for true meme styling
 - **Dynamic Sizing**: Font size automatically adjusts based on image dimensions
 - **Text Wrapping**: Long text automatically wraps to multiple lines
 - **Uppercase Styling**: Text is automatically converted to uppercase for classic meme style
 - **High Quality Output**: Generated memes are saved as PNG for best quality
+- **Font Fallbacks**: Automatically falls back to Arial if Impact is not available
 
 ## Examples
 - `/caption image:funny_cat.jpg top_text:When you see` `bottom_text:Free food`
@@ -43,8 +44,20 @@ The `/caption` command allows users to create custom memes by adding text to ima
 
 ## Technical Details
 - Built using the Canvas library for image processing
+- Uses authentic Impact font for classic meme styling
 - Supports all image formats supported by the Canvas library
-- Text rendering uses stroke and fill for the classic meme outline effect
+- Text rendering uses multiple shadow passes for bold black outline effect
 - Automatic text positioning and sizing algorithms
+- Font fallback system: Impact → Anton → Arial Black → Arial
+- Minimum font size of 32px ensures readability on all image sizes
+
+## Font Setup
+For the best meme experience, the bot uses Impact font:
+- **Windows**: Impact is usually pre-installed
+- **Manual Install**: Place `impact.ttf` in the `fonts/` directory
+- **Auto Download**: Bot attempts to download Anton font as alternative
+- **Fallbacks**: System fonts provide good alternatives
+
+Use `/fontsetup` command for detailed font installation instructions.
 
 Made with 🧀 by AquaCheese
