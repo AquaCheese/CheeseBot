@@ -628,13 +628,27 @@ const commands = [
         )
         .addStringOption(option =>
             option.setName('top_text')
-                .setDescription('Text to add at the top of the image')
+                .setDescription('Text to add at the top of the image (up to 500 characters)')
                 .setRequired(false)
+                .setMaxLength(500)
         )
         .addStringOption(option =>
             option.setName('bottom_text')
-                .setDescription('Text to add at the bottom of the image')
+                .setDescription('Text to add at the bottom of the image (up to 500 characters)')
                 .setRequired(false)
+                .setMaxLength(500)
+        )
+        .addStringOption(option =>
+            option.setName('font_size')
+                .setDescription('Font size adjustment (tiny, small, normal, large, huge)')
+                .setRequired(false)
+                .addChoices(
+                    { name: 'Tiny', value: 'tiny' },
+                    { name: 'Small', value: 'small' },
+                    { name: 'Normal', value: 'normal' },
+                    { name: 'Large', value: 'large' },
+                    { name: 'Huge', value: 'huge' }
+                )
         ),
     
     new SlashCommandBuilder()
@@ -8538,6 +8552,7 @@ async function handleCaptionCommand(interaction) {
         const attachment = interaction.options.getAttachment('image');
         const topText = interaction.options.getString('top_text') || '';
         const bottomText = interaction.options.getString('bottom_text') || '';
+        const fontSizeOption = interaction.options.getString('font_size') || 'normal';
         
         // Validate attachment
         if (!attachment) {
@@ -8573,20 +8588,32 @@ async function handleCaptionCommand(interaction) {
         ctx.drawImage(image, 0, 0);
         
         // Configure text style with more robust font handling
-        // Use adaptive font size based on image dimensions
-        let fontSize;
+        // Enhanced font sizing with user choice and support for much smaller fonts
+        let baseFontSize;
         if (image.width < 200 || image.height < 200) {
-            // Very small images - use larger relative font
-            fontSize = Math.max(image.width / 8, image.height / 8, 24);
+            // Very small images - allow for tiny fonts
+            baseFontSize = Math.max(image.width / 8, image.height / 8, 16);
         } else if (image.width < 400 || image.height < 400) {
             // Small images
-            fontSize = Math.max(image.width / 10, image.height / 10, 28);
+            baseFontSize = Math.max(image.width / 10, image.height / 10, 20);
         } else {
             // Medium and large images
-            fontSize = Math.max(image.width / 12, image.height / 12, 32);
+            baseFontSize = Math.max(image.width / 12, image.height / 12, 24);
         }
         
-        console.log(`Image size: ${image.width}x${image.height}, Font size: ${fontSize}`);
+        // Apply font size multiplier based on user choice
+        const fontSizeMultipliers = {
+            'tiny': 0.4,    // 40% of base size - for very long text
+            'small': 0.6,   // 60% of base size - for longer text
+            'normal': 1.0,  // 100% of base size - default
+            'large': 1.4,   // 140% of base size - for shorter text
+            'huge': 1.8     // 180% of base size - for very short text
+        };
+        
+        const multiplier = fontSizeMultipliers[fontSizeOption] || 1.0;
+        const fontSize = Math.max(baseFontSize * multiplier, 12); // Minimum 12px font
+        
+        console.log(`Image size: ${image.width}x${image.height}, Base font: ${baseFontSize}, Size option: ${fontSizeOption} (${multiplier}x), Final font: ${fontSize}`);
         
         // Use multiple font fallbacks to ensure text always renders
         const fontFamily = [
@@ -8624,13 +8651,26 @@ async function handleCaptionCommand(interaction) {
             
             console.log(`Drawing text: "${sanitizedText}" at ${x},${y} with maxWidth ${maxWidth}`);
             
-            // Split text into words
+            // Enhanced word wrapping for longer text support
             const words = sanitizedText.split(/\s+/);
             const lines = [];
             let currentLine = '';
             
-            // Word wrapping with fallback
+            // For very long words, break them into smaller chunks
+            const processedWords = [];
             for (const word of words) {
+                if (word.length > 15) {
+                    // Break very long words into chunks
+                    for (let i = 0; i < word.length; i += 12) {
+                        processedWords.push(word.substring(i, i + 12));
+                    }
+                } else {
+                    processedWords.push(word);
+                }
+            }
+            
+            // Advanced word wrapping with fallback
+            for (const word of processedWords) {
                 const testLine = currentLine + (currentLine ? ' ' : '') + word;
                 
                 let textWidth;
@@ -8638,8 +8678,8 @@ async function handleCaptionCommand(interaction) {
                     const metrics = ctx.measureText(testLine);
                     textWidth = metrics.width;
                 } catch (error) {
-                    // Fallback text width estimation
-                    textWidth = testLine.length * fontSize * 0.6;
+                    // More accurate fallback text width estimation based on font size
+                    textWidth = testLine.length * fontSize * 0.55;
                 }
                 
                 if (textWidth > maxWidth && currentLine) {
@@ -8656,8 +8696,15 @@ async function handleCaptionCommand(interaction) {
             
             console.log(`Text lines: ${lines.length}, content: ${JSON.stringify(lines)}`);
             
-            // Calculate positioning
-            const lineHeight = fontSize * 1.1; // Slightly tighter line spacing
+            // Enhanced positioning for multiple lines and small fonts
+            let lineHeight;
+            if (fontSize < 20) {
+                lineHeight = fontSize * 1.05; // Tighter spacing for small fonts
+            } else if (lines.length > 3) {
+                lineHeight = fontSize * 0.95; // Tighter spacing for many lines
+            } else {
+                lineHeight = fontSize * 1.1; // Normal spacing
+            }
             const totalHeight = lines.length * lineHeight;
             const startY = y - (totalHeight / 2) + (lineHeight / 2);
             
@@ -8701,21 +8748,34 @@ async function handleCaptionCommand(interaction) {
             });
         }
         
-        // Adaptive text positioning based on image size
-        const minPadding = Math.max(fontSize * 0.8, 20); // Dynamic padding
-        const maxTextWidth = image.width * 0.95; // Use more of the image width
+        // Enhanced text positioning for longer text support
+        const minPadding = Math.max(fontSize * 0.6, 15); // Reduced padding for more text space
+        const maxTextWidth = image.width * 0.98; // Use almost full width for long text
         
-        // Draw top text
+        // Calculate estimated text height for better positioning
+        function estimateTextHeight(text) {
+            if (!text) return 0;
+            const words = text.split(/\s+/);
+            const avgWordsPerLine = Math.floor(maxTextWidth / (fontSize * 0.55 * 8)); // Rough estimate
+            const estimatedLines = Math.ceil(words.length / Math.max(avgWordsPerLine, 1));
+            const lineHeight = fontSize < 20 ? fontSize * 1.05 : 
+                              estimatedLines > 3 ? fontSize * 0.95 : fontSize * 1.1;
+            return estimatedLines * lineHeight;
+        }
+        
+        // Draw top text with dynamic positioning
         if (topText) {
-            const topY = minPadding + (fontSize / 2);
-            console.log(`Positioning top text at y=${topY}`);
+            const estimatedHeight = estimateTextHeight(topText);
+            const topY = minPadding + Math.max(estimatedHeight / 2, fontSize / 2);
+            console.log(`Positioning top text at y=${topY} (estimated height: ${estimatedHeight})`);
             drawMemeText(topText, image.width / 2, topY, maxTextWidth);
         }
         
-        // Draw bottom text  
+        // Draw bottom text with dynamic positioning
         if (bottomText) {
-            const bottomY = image.height - minPadding - (fontSize / 2);
-            console.log(`Positioning bottom text at y=${bottomY}`);
+            const estimatedHeight = estimateTextHeight(bottomText);
+            const bottomY = image.height - minPadding - Math.max(estimatedHeight / 2, fontSize / 2);
+            console.log(`Positioning bottom text at y=${bottomY} (estimated height: ${estimatedHeight})`);
             drawMemeText(bottomText, image.width / 2, bottomY, maxTextWidth);
         }
         
@@ -8730,10 +8790,10 @@ async function handleCaptionCommand(interaction) {
         // Create embed
         const embed = new EmbedBuilder()
             .setTitle('🎭 Custom Meme Created!')
-            .setDescription(`${topText ? `**Top:** ${topText}\n` : ''}${bottomText ? `**Bottom:** ${bottomText}` : ''}`)
+            .setDescription(`${topText ? `**Top:** ${topText.length > 50 ? topText.substring(0, 50) + '...' : topText}\n` : ''}${bottomText ? `**Bottom:** ${bottomText.length > 50 ? bottomText.substring(0, 50) + '...' : bottomText}\n` : ''}**Font Size:** ${fontSizeOption.charAt(0).toUpperCase() + fontSizeOption.slice(1)} (${Math.round(fontSize)}px)`)
             .setImage('attachment://meme.png')
             .setColor(0xFFD700)
-            .setFooter({ text: 'Made with 🧀 by AquaCheese • Using Impact Font' });
+            .setFooter({ text: 'Made with 🧀 by AquaCheese • Using Impact Font • Up to 500 characters per line!' });
         
         console.log('Sending response...');
         
