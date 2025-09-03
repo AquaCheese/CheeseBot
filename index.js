@@ -8572,43 +8572,77 @@ async function handleCaptionCommand(interaction) {
         // Draw the original image
         ctx.drawImage(image, 0, 0);
         
-        // Configure text style (classic meme font styling)
-        // Improved font size calculation with better minimum size for readability
-        const baseFontSize = Math.min(image.width / 12, image.height / 12);
-        const fontSize = Math.max(baseFontSize, 32); // Minimum 32px for proper rendering
+        // Configure text style with more robust font handling
+        // Use adaptive font size based on image dimensions
+        let fontSize;
+        if (image.width < 200 || image.height < 200) {
+            // Very small images - use larger relative font
+            fontSize = Math.max(image.width / 8, image.height / 8, 24);
+        } else if (image.width < 400 || image.height < 400) {
+            // Small images
+            fontSize = Math.max(image.width / 10, image.height / 10, 28);
+        } else {
+            // Medium and large images
+            fontSize = Math.max(image.width / 12, image.height / 12, 32);
+        }
         
         console.log(`Image size: ${image.width}x${image.height}, Font size: ${fontSize}`);
         
-        // Use Impact font for authentic meme styling - simplified approach
-        ctx.font = `bold ${fontSize}px Impact, "Arial Black", Arial, sans-serif`;
+        // Use multiple font fallbacks to ensure text always renders
+        const fontFamily = [
+            'Impact',           // Windows system font
+            'Arial Black',      // Windows fallback
+            'Helvetica Neue',   // Mac fallback
+            'Arial',            // Universal fallback
+            'sans-serif'        // Browser fallback
+        ].join(', ');
+        
+        ctx.font = `bold ${fontSize}px ${fontFamily}`;
         ctx.fillStyle = 'white';
         ctx.strokeStyle = 'black';
-        ctx.lineWidth = Math.max(fontSize / 15, 3); // Ensure minimum stroke width of 3px
+        ctx.lineWidth = Math.max(fontSize / 12, 4); // Thicker outline for better visibility
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         
-        // Set text rendering quality
-        if (ctx.textRenderingOptimization) {
-            ctx.textRenderingOptimization = 'optimizeQuality';
-        }
+        // Force text rendering quality
         ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         
-        // Simplified function to wrap text and draw it quickly
+        // Test if font is working by measuring text
+        const testMetrics = ctx.measureText('TEST');
+        console.log(`Font test: width=${testMetrics.width}, font="${ctx.font}"`);
+        
+        if (testMetrics.width === 0) {
+            console.warn('Font measurement failed, using Arial fallback');
+            ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+        }
+        
+        // Robust function to wrap text and draw it for all image sizes
         function drawMemeText(text, x, y, maxWidth) {
-            // Ensure text is properly encoded and sanitized
             const sanitizedText = text.toString().trim().toUpperCase();
             if (!sanitizedText) return;
             
+            console.log(`Drawing text: "${sanitizedText}" at ${x},${y} with maxWidth ${maxWidth}`);
+            
+            // Split text into words
             const words = sanitizedText.split(/\s+/);
             const lines = [];
             let currentLine = '';
             
-            // Simple text wrapping
+            // Word wrapping with fallback
             for (const word of words) {
                 const testLine = currentLine + (currentLine ? ' ' : '') + word;
-                const metrics = ctx.measureText(testLine);
                 
-                if (metrics.width > maxWidth && currentLine) {
+                let textWidth;
+                try {
+                    const metrics = ctx.measureText(testLine);
+                    textWidth = metrics.width;
+                } catch (error) {
+                    // Fallback text width estimation
+                    textWidth = testLine.length * fontSize * 0.6;
+                }
+                
+                if (textWidth > maxWidth && currentLine) {
                     lines.push(currentLine);
                     currentLine = word;
                 } else {
@@ -8620,31 +8654,69 @@ async function handleCaptionCommand(interaction) {
                 lines.push(currentLine);
             }
             
-            // Draw each line with simplified outline
-            const lineHeight = fontSize * 1.2;
-            const startY = y - ((lines.length - 1) * lineHeight) / 2;
+            console.log(`Text lines: ${lines.length}, content: ${JSON.stringify(lines)}`);
             
+            // Calculate positioning
+            const lineHeight = fontSize * 1.1; // Slightly tighter line spacing
+            const totalHeight = lines.length * lineHeight;
+            const startY = y - (totalHeight / 2) + (lineHeight / 2);
+            
+            // Draw each line with multiple techniques to ensure visibility
             lines.forEach((line, index) => {
                 const lineY = startY + (index * lineHeight);
                 
-                // Draw text outline with single stroke
-                ctx.strokeText(line, x, lineY);
-                
-                // Draw main text
-                ctx.fillText(line, x, lineY);
+                try {
+                    // Method 1: Traditional stroke + fill
+                    ctx.strokeText(line, x, lineY);
+                    ctx.fillText(line, x, lineY);
+                    
+                    // Method 2: Additional shadow for very small text
+                    if (fontSize < 30) {
+                        ctx.fillStyle = 'black';
+                        ctx.fillText(line, x + 1, lineY + 1);
+                        ctx.fillText(line, x - 1, lineY - 1);
+                        ctx.fillStyle = 'white';
+                        ctx.fillText(line, x, lineY);
+                    }
+                    
+                    console.log(`Drew line ${index + 1}: "${line}" at y=${lineY}`);
+                    
+                } catch (error) {
+                    console.error('Text rendering error for line:', line, error);
+                    
+                    // Emergency fallback - try character by character
+                    try {
+                        for (let i = 0; i < line.length; i++) {
+                            const char = line[i];
+                            const charX = x + (i - line.length / 2) * (fontSize * 0.6);
+                            ctx.fillStyle = 'black';
+                            ctx.fillText(char, charX + 1, lineY + 1);
+                            ctx.fillStyle = 'white';
+                            ctx.fillText(char, charX, lineY);
+                        }
+                    } catch (fallbackError) {
+                        console.error('Fallback rendering also failed:', fallbackError);
+                    }
+                }
             });
         }
         
+        // Adaptive text positioning based on image size
+        const minPadding = Math.max(fontSize * 0.8, 20); // Dynamic padding
+        const maxTextWidth = image.width * 0.95; // Use more of the image width
+        
         // Draw top text
         if (topText) {
-            const topY = Math.max(fontSize * 1.2, 50); // Ensure minimum distance from top
-            drawMemeText(topText, image.width / 2, topY, image.width * 0.9);
+            const topY = minPadding + (fontSize / 2);
+            console.log(`Positioning top text at y=${topY}`);
+            drawMemeText(topText, image.width / 2, topY, maxTextWidth);
         }
         
-        // Draw bottom text
+        // Draw bottom text  
         if (bottomText) {
-            const bottomY = image.height - Math.max(fontSize * 1.2, 50); // Ensure minimum distance from bottom
-            drawMemeText(bottomText, image.width / 2, bottomY, image.width * 0.9);
+            const bottomY = image.height - minPadding - (fontSize / 2);
+            console.log(`Positioning bottom text at y=${bottomY}`);
+            drawMemeText(bottomText, image.width / 2, bottomY, maxTextWidth);
         }
         
         console.log('Generating image buffer...');

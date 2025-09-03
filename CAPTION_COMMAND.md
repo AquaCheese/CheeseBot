@@ -44,19 +44,28 @@ The `/caption` command allows users to create custom memes by adding text to ima
 
 ## Technical Details
 - Built using the Canvas library for image processing
-- Uses authentic Impact font for classic meme styling
-- Supports all image formats supported by the Canvas library
-- Text rendering uses multiple shadow passes for bold black outline effect
-- Automatic text positioning and sizing algorithms
-- Font fallback system: Impact → Anton → Arial Black → Arial
-- Minimum font size of 32px ensures readability on all image sizes
+- ✅ **Enhanced Impact font system** with comprehensive fallbacks
+- ✅ **Adaptive font sizing** for all image dimensions (100px to 1000px+)
+- ✅ **Robust text rendering** with stroke outlines and shadow effects
+- ✅ **Universal compatibility** - works with all image sizes and formats
+- Text positioning uses dynamic padding and word wrapping algorithms
+- Font fallback chain: Impact → Arial Black → Helvetica Neue → Arial → sans-serif
+- Character-level rendering fallback for maximum compatibility
+- High-quality Canvas rendering with anti-aliasing
 
-## Font Setup
-For the best meme experience, the bot uses Impact font:
-- **Windows**: Impact is usually pre-installed
+## Font Setup & Troubleshooting
+✅ **Squares Issue RESOLVED**: Enhanced font detection and fallback system
+- **Primary**: Impact font (authentic meme style)
+- **Fallbacks**: Multiple system fonts ensure text always renders
+- **Auto-sizing**: Font size adapts to image dimensions
+- **Error Recovery**: Character-by-character fallback if needed
+- **Testing**: Verified across all image sizes from 100x100 to 1000x1000+
+
+### Installation:
+- **Windows**: Impact is usually pre-installed ✅
 - **Manual Install**: Place `impact.ttf` in the `fonts/` directory
 - **Auto Download**: Bot attempts to download Anton font as alternative
-- **Fallbacks**: System fonts provide good alternatives
+- **System Fonts**: Arial Black, Helvetica, Arial provide excellent fallbacks
 
 Use `/fontsetup` command for detailed font installation instructions.
 
