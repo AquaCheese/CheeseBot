@@ -46,6 +46,7 @@ class Database {
                 logs_channel_id TEXT,
                 panic_mode BOOLEAN DEFAULT 0,
                 safe_roles TEXT DEFAULT '[]',
+                youtube_channel_id TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 left_at DATETIME
@@ -395,6 +396,38 @@ class Database {
 
         // Run migrations
         this.runMigrations();
+        
+        // Verify YouTube column exists
+        this.verifyYouTubeColumn();
+    }
+
+    verifyYouTubeColumn() {
+        // Check if youtube_channel_id column exists in server_configs
+        this.db.get(`PRAGMA table_info(server_configs)`, (err, rows) => {
+            if (err) {
+                console.log('Could not verify YouTube column:', err.message);
+                return;
+            }
+            
+            // This will help us see if the column exists
+            this.db.all(`PRAGMA table_info(server_configs)`, (err, columns) => {
+                if (err) return;
+                
+                const hasYouTubeColumn = columns.some(col => col.name === 'youtube_channel_id');
+                if (hasYouTubeColumn) {
+                    console.log('✅ YouTube column verified in server_configs');
+                } else {
+                    console.log('⚠️ YouTube column missing, attempting to add...');
+                    this.db.run(`ALTER TABLE server_configs ADD COLUMN youtube_channel_id TEXT`, (err) => {
+                        if (err && !err.message.includes('duplicate column name')) {
+                            console.log('❌ Failed to add YouTube column:', err.message);
+                        } else {
+                            console.log('✅ YouTube column added successfully');
+                        }
+                    });
+                }
+            });
+        });
     }
 
     runMigrations() {
@@ -402,8 +435,8 @@ class Database {
         this.db.run(`
             ALTER TABLE tickets ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         `, (err) => {
-            // Ignore error if column already exists
-            if (err && !err.message.includes('duplicate column name')) {
+            // Ignore error if column already exists or table doesn't exist
+            if (err && !err.message.includes('duplicate column name') && !err.message.includes('no such table')) {
                 console.log('Migration note:', err.message);
             }
         });
@@ -412,8 +445,8 @@ class Database {
         this.db.run(`
             ALTER TABLE server_configs ADD COLUMN youtube_channel_id TEXT
         `, (err) => {
-            // Ignore error if column already exists
-            if (err && !err.message.includes('duplicate column name')) {
+            // Ignore error if column already exists or table doesn't exist
+            if (err && !err.message.includes('duplicate column name') && !err.message.includes('no such table')) {
                 console.log('YouTube migration note:', err.message);
             }
         });

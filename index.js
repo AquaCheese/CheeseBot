@@ -12,7 +12,8 @@ const {
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle,
-    AttachmentBuilder
+    AttachmentBuilder,
+    MessageFlags
 } = require('discord.js');
 const http = require('http');
 require('dotenv').config();
@@ -8260,7 +8261,10 @@ async function handleYouTubeSetup(interaction) {
             .setDescription('You need "Manage Server" permission to configure YouTube integration.')
             .setColor(0xE74C3C);
         
-        return await interaction.reply({ embeds: [embed], ephemeral: true });
+        return await interaction.reply({ 
+            embeds: [embed], 
+            flags: MessageFlags.Ephemeral 
+        });
     }
     
     const channelUrl = interaction.options.getString('channel_url');
@@ -8281,7 +8285,10 @@ async function handleYouTubeSetup(interaction) {
             .setDescription('Please provide a valid YouTube channel URL or handle (e.g., @username)')
             .setColor(0xE74C3C);
         
-        return await interaction.reply({ embeds: [embed], ephemeral: true });
+        return await interaction.reply({ 
+            embeds: [embed], 
+            flags: MessageFlags.Ephemeral 
+        });
     }
     
     try {
@@ -8311,7 +8318,10 @@ async function handleYouTubeSetup(interaction) {
         await interaction.reply({ embeds: [embed] });
     } catch (error) {
         console.error('YouTube setup error:', error);
-        await interaction.reply({ content: '❌ Failed to configure YouTube integration.', ephemeral: true });
+        await interaction.reply({ 
+            content: '❌ Failed to configure YouTube integration.', 
+            flags: MessageFlags.Ephemeral 
+        });
     }
 }
 
