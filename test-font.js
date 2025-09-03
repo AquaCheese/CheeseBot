@@ -19,21 +19,39 @@ async function testFontSetup() {
         const canvas = createCanvas(400, 300);
         const ctx = canvas.getContext('2d');
         
-        // Test basic text rendering
-        ctx.font = 'bold 48px Arial, sans-serif';
-        ctx.fillStyle = 'white';
-        ctx.strokeStyle = 'black';
-        ctx.lineWidth = 2;
+        // Fill background
+        ctx.fillStyle = '#4287f5';
+        ctx.fillRect(0, 0, 400, 300);
+        
+        // Test improved text rendering
+        const fontSize = 48;
+        ctx.font = `bold ${fontSize}px "Arial Black", Arial, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         
-        ctx.fillRect(0, 0, 400, 300);
-        ctx.fillStyle = 'white';
-        ctx.strokeText('TEST MEME', 200, 100);
-        ctx.fillText('TEST MEME', 200, 100);
+        // Set text rendering quality
+        ctx.textRenderingOptimization = 'optimizeQuality';
+        ctx.imageSmoothingEnabled = true;
         
-        ctx.strokeText('BOTTOM TEXT', 200, 200);
-        ctx.fillText('BOTTOM TEXT', 200, 200);
+        // Function to draw text with outline
+        function drawMemeText(text, x, y) {
+            // Draw text outline with multiple passes
+            for (let dx = -2; dx <= 2; dx++) {
+                for (let dy = -2; dy <= 2; dy++) {
+                    if (dx !== 0 || dy !== 0) {
+                        ctx.fillStyle = 'black';
+                        ctx.fillText(text, x + dx, y + dy);
+                    }
+                }
+            }
+            
+            // Draw main text
+            ctx.fillStyle = 'white';
+            ctx.fillText(text, x, y);
+        }
+        
+        drawMemeText('TEST MEME', 200, 100);
+        drawMemeText('BOTTOM TEXT', 200, 200);
         
         console.log('✅ Canvas text rendering test successful!');
         

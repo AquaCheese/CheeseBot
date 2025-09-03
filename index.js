@@ -8534,22 +8534,41 @@ async function handleCaptionCommand(interaction) {
         
         // Configure text style (classic meme font styling)
         const fontSize = Math.max(Math.min(image.width / 12, image.height / 12), 20); // Dynamic font size
-        ctx.font = getMemeFont(fontSize);
+        
+        // Use a more robust font configuration for Windows compatibility
+        ctx.font = `bold ${fontSize}px "Arial Black", Arial, sans-serif`;
         ctx.fillStyle = 'white';
         ctx.strokeStyle = 'black';
-        ctx.lineWidth = fontSize / 15;
+        ctx.lineWidth = Math.max(fontSize / 15, 2); // Ensure minimum stroke width
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         
+        // Set text rendering quality
+        ctx.textRenderingOptimization = 'optimizeQuality';
+        ctx.imageSmoothingEnabled = true;
+        
         // Function to wrap text and draw it
         function drawMemeText(text, x, y, maxWidth) {
-            const words = text.toUpperCase().split(' ');
+            // Ensure text is properly encoded and sanitized
+            const sanitizedText = text.toString().trim();
+            if (!sanitizedText) return;
+            
+            const words = sanitizedText.toUpperCase().split(/\s+/);
             const lines = [];
             let currentLine = '';
             
             for (const word of words) {
                 const testLine = currentLine + (currentLine ? ' ' : '') + word;
-                const metrics = ctx.measureText(testLine);
+                
+                // Test text width measurement
+                let metrics;
+                try {
+                    metrics = ctx.measureText(testLine);
+                } catch (error) {
+                    console.error('Text measurement error:', error);
+                    // Fallback to character-based estimation
+                    metrics = { width: testLine.length * fontSize * 0.6 };
+                }
                 
                 if (metrics.width > maxWidth && currentLine) {
                     lines.push(currentLine);
@@ -8563,16 +8582,33 @@ async function handleCaptionCommand(interaction) {
                 lines.push(currentLine);
             }
             
-            // Draw each line
+            // Draw each line with better error handling
             const lineHeight = fontSize * 1.2;
             const startY = y - ((lines.length - 1) * lineHeight) / 2;
             
             lines.forEach((line, index) => {
                 const lineY = startY + (index * lineHeight);
-                // Draw text stroke (outline)
-                ctx.strokeText(line, x, lineY);
-                // Draw text fill
-                ctx.fillText(line, x, lineY);
+                
+                try {
+                    // Draw text stroke (outline) with multiple passes for better visibility
+                    for (let dx = -1; dx <= 1; dx++) {
+                        for (let dy = -1; dy <= 1; dy++) {
+                            if (dx !== 0 || dy !== 0) {
+                                ctx.fillStyle = 'black';
+                                ctx.fillText(line, x + dx, lineY + dy);
+                            }
+                        }
+                    }
+                    
+                    // Draw main text
+                    ctx.fillStyle = 'white';
+                    ctx.fillText(line, x, lineY);
+                } catch (error) {
+                    console.error('Text rendering error:', error);
+                    // Fallback: try simpler rendering
+                    ctx.fillStyle = 'white';
+                    ctx.fillText(line, x, lineY);
+                }
             });
         }
         
