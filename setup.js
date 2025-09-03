@@ -16,6 +16,7 @@ class SetupSystem {
                 { name: '🤖 Auto Moderation', value: 'Configure content filters', inline: true },
                 { name: '💥 Anti-Nuke Protection', value: 'Prevent server destruction', inline: true },
                 { name: '⚠️ Warning System', value: 'Setup warning thresholds', inline: true },
+                { name: '📺 YouTube Announcements', value: 'Configure AquaCheese notifications', inline: true },
                 { name: '📊 View Current Config', value: 'See all current settings', inline: true },
                 { name: '🆘 Panic Button', value: 'Emergency server lockdown', inline: true },
                 { name: '🔧 Advanced Settings', value: 'Fine-tune configurations', inline: true }
@@ -25,7 +26,7 @@ class SetupSystem {
         const selectMenu = new StringSelectMenuBuilder()
             .setCustomId('setup_main_menu')
             .setPlaceholder('Choose a configuration category')
-            .addOptions([
+            .addOptions(
                 {
                     label: 'Spam Protection',
                     description: 'Configure anti-spam measures',
@@ -57,6 +58,12 @@ class SetupSystem {
                     emoji: '⚠️'
                 },
                 {
+                    label: 'YouTube Announcements',
+                    description: 'Configure AquaCheese notifications',
+                    value: 'youtube_announcements',
+                    emoji: '📺'
+                },
+                {
                     label: 'View Current Config',
                     description: 'See all current settings',
                     value: 'view_config',
@@ -74,7 +81,7 @@ class SetupSystem {
                     value: 'advanced_settings',
                     emoji: '🔧'
                 }
-            ]);
+            );
 
         const row = new ActionRowBuilder().addComponents(selectMenu);
         return { embeds: [embed], components: [row] };
@@ -444,6 +451,11 @@ class SetupSystem {
                     name: '🆘 Emergency', 
                     value: `**Panic Mode:** ${config?.panic_mode ? '🔒 ACTIVE' : '🟢 Inactive'}\n**Safe Roles:** ${config ? JSON.parse(config.safe_roles || '[]').length : 0} configured`, 
                     inline: true 
+                },
+                { 
+                    name: '📺 YouTube Announcements', 
+                    value: `**AquaCheese:** ${config?.aquacheese_announcements ? '✅ Enabled' : '❌ Disabled'}\n**Channel:** ${config?.youtube_channel_id ? `<#${config.youtube_channel_id}>` : 'Not set'}`, 
+                    inline: true 
                 }
             )
             .setFooter({ text: 'Last updated' })
@@ -670,6 +682,60 @@ class SetupSystem {
                 new ButtonBuilder()
                     .setCustomId('config_export')
                     .setLabel('📄 Export Config')
+                    .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
+                    .setCustomId('setup_back')
+                    .setLabel('Back to Main Menu')
+                    .setStyle(ButtonStyle.Secondary)
+            );
+
+        return { embeds: [embed], components: [buttons] };
+    }
+
+    async createYouTubeAnnouncementsMenu(guildId) {
+        const config = await this.db.getServerConfig(guildId);
+        
+        const embed = new EmbedBuilder()
+            .setTitle('📺 YouTube Announcements Configuration')
+            .setDescription('Configure AquaCheese YouTube notifications for your server')
+            .setColor(0xFF0000) // YouTube red
+            .addFields(
+                { 
+                    name: 'AquaCheese Announcements', 
+                    value: config?.aquacheese_announcements ? '✅ Enabled' : '❌ Disabled', 
+                    inline: true 
+                },
+                { 
+                    name: 'Announcements Channel', 
+                    value: config?.announcements_channel_id ? `<#${config.announcements_channel_id}>` : 'Not configured', 
+                    inline: true 
+                },
+                { 
+                    name: 'Server YouTube Channel', 
+                    value: config?.youtube_channel_id || 'Not configured', 
+                    inline: true 
+                },
+                { 
+                    name: 'How it works', 
+                    value: '• **AquaCheese Announcements**: Get notified when AquaCheese uploads new videos or goes live\n• **Channel Setup**: Use `/config` to set your announcements channel\n• **Server Channel**: Use `/yt setup` to configure your own YouTube channel for monitoring', 
+                    inline: false 
+                },
+                { 
+                    name: 'Available Commands', 
+                    value: '• `/aquacheese recent` - Latest AquaCheese video\n• `/aquacheese channel` - Channel information\n• `/yt setup` - Configure server YouTube channel\n• `/testnotification` - Test the notification system (Admin only)', 
+                    inline: false 
+                }
+            );
+
+        const buttons = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('aquacheese_announcements_toggle')
+                    .setLabel(config?.aquacheese_announcements ? 'Disable AquaCheese Announcements' : 'Enable AquaCheese Announcements')
+                    .setStyle(config?.aquacheese_announcements ? ButtonStyle.Danger : ButtonStyle.Success),
+                new ButtonBuilder()
+                    .setCustomId('youtube_channel_configure')
+                    .setLabel('Configure Channels')
                     .setStyle(ButtonStyle.Primary),
                 new ButtonBuilder()
                     .setCustomId('setup_back')

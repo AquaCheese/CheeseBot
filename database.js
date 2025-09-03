@@ -394,6 +394,38 @@ class Database {
             )
         `);
 
+        // YouTube monitoring tables
+        this.db.run(`
+            CREATE TABLE IF NOT EXISTS youtube_content (
+                id TEXT PRIMARY KEY,
+                channel_id TEXT,
+                title TEXT,
+                description TEXT,
+                published_at TEXT,
+                thumbnail_url TEXT,
+                video_url TEXT,
+                content_type TEXT,
+                view_count INTEGER DEFAULT 0,
+                like_count INTEGER DEFAULT 0,
+                is_live BOOLEAN DEFAULT 0,
+                duration TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        this.db.run(`
+            CREATE TABLE IF NOT EXISTS youtube_notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id TEXT,
+                content_id TEXT,
+                content_type TEXT,
+                notification_sent BOOLEAN DEFAULT 0,
+                sent_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (content_id) REFERENCES youtube_content (id)
+            )
+        `);
+
         // Run migrations
         this.runMigrations();
         
@@ -450,6 +482,26 @@ class Database {
                 console.log('YouTube migration note:', err.message);
             }
         });
+
+        // Migration: Add announcements_channel_id column to server_configs table
+        this.db.run(`
+            ALTER TABLE server_configs ADD COLUMN announcements_channel_id TEXT
+        `, (err) => {
+            // Ignore error if column already exists or table doesn't exist
+            if (err && !err.message.includes('duplicate column name') && !err.message.includes('no such table')) {
+                console.log('Announcements migration note:', err.message);
+            }
+        });
+
+        // Migration: Add aquacheese_announcements column to server_configs table
+        this.db.run(`
+            ALTER TABLE server_configs ADD COLUMN aquacheese_announcements BOOLEAN DEFAULT 0
+        `, (err) => {
+            // Ignore error if column already exists or table doesn't exist
+            if (err && !err.message.includes('duplicate column name') && !err.message.includes('no such table')) {
+                console.log('AquaCheese announcements migration note:', err.message);
+            }
+        });
     }
 
     // Server configuration methods
@@ -468,12 +520,12 @@ class Database {
 
     async setServerConfig(guildId, config) {
         return new Promise((resolve, reject) => {
-            const { adminChannelId, logsChannelId, safeRoles } = config;
+            const { adminChannelId, logsChannelId, announcementsChannelId, safeRoles } = config;
             this.db.run(
                 `INSERT OR REPLACE INTO server_configs 
-                 (guild_id, admin_channel_id, logs_channel_id, safe_roles, updated_at) 
-                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-                [guildId, adminChannelId, logsChannelId, JSON.stringify(safeRoles || [])],
+                 (guild_id, admin_channel_id, logs_channel_id, announcements_channel_id, safe_roles, updated_at) 
+                 VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+                [guildId, adminChannelId, logsChannelId, announcementsChannelId, JSON.stringify(safeRoles || [])],
                 function(err) {
                     if (err) reject(err);
                     else resolve(this.lastID);

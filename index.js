@@ -16,6 +16,7 @@ const {
     MessageFlags
 } = require('discord.js');
 const { createCanvas, loadImage, registerFont } = require('canvas');
+const { google } = require('googleapis');
 const axios = require('axios');
 const https = require('https');
 const fs = require('fs');
@@ -59,7 +60,7 @@ const commands = [
     
     new SlashCommandBuilder()
         .setName('config')
-        .setDescription('Set up admin and logs channels')
+        .setDescription('Set up admin, logs, and announcements channels')
         .addChannelOption(option =>
             option.setName('admin-channel')
                 .setDescription('Channel for admin commands')
@@ -68,6 +69,10 @@ const commands = [
             option.setName('logs-channel')
                 .setDescription('Channel for moderation logs')
                 .setRequired(true))
+        .addChannelOption(option =>
+            option.setName('announcements-channel')
+                .setDescription('Channel for YouTube and other announcements')
+                .setRequired(false))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     
     new SlashCommandBuilder()
@@ -617,6 +622,11 @@ const commands = [
                     { name: 'Feature Addition', value: 'feature' }
                 ))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
+    new SlashCommandBuilder()
+        .setName('testnotification')
+        .setDescription('Send a test YouTube notification (Admin only)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     
     new SlashCommandBuilder()
         .setName('caption')
@@ -661,6 +671,367 @@ const commands = [
 // Get current bot version from package.json
 const packageJson = require('./package.json');
 const CURRENT_VERSION = packageJson.version;
+
+// YouTube notification system for AquaCheese
+const AQUACHEESE_CHANNEL_HANDLE = '@aquacheese1';
+const AQUACHEESE_CHANNEL_URL = 'https://www.youtube.com/@aquacheese1';
+const YOUTUBE_RSS_URL = 'https://www.youtube.com/feeds/videos.xml?channel_id=';
+
+// YouTube monitoring system
+let youtubeMonitoringInterval = null;
+
+async function initializeYouTubeMonitoring(client) {
+    console.log('🔄 Initializing YouTube monitoring system...');
+    
+    try {
+        // Initialize YouTube tracking tables
+        await initializeYouTubeTracking();
+        
+        // Start monitoring (check every 5 minutes)
+        youtubeMonitoringInterval = setInterval(async () => {
+            await checkForNewAquaCheeseContent(client);
+        }, 5 * 60 * 1000); // 5 minutes
+        
+        console.log('✅ YouTube monitoring system initialized');
+        console.log('📺 Monitoring AquaCheese channel for new content...');
+    } catch (error) {
+        console.error('❌ Failed to initialize YouTube monitoring:', error);
+    }
+}
+
+async function initializeYouTubeTracking() {
+    // Create table for tracking last seen content if it doesn't exist
+    database.db.run(`
+        CREATE TABLE IF NOT EXISTS aquacheese_content_tracking (
+            content_id TEXT PRIMARY KEY,
+            content_type TEXT,
+            title TEXT,
+            url TEXT,
+            published_at TEXT,
+            notified_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+}
+
+async function checkForNewAquaCheeseContent(client) {
+    try {
+        console.log('🔍 Checking for new AquaCheese content...');
+        
+        // In a real implementation, you would use the YouTube Data API v3
+        // For now, we'll simulate checking for new content
+        const newContent = await checkAquaCheeseChannel();
+        
+        if (newContent && newContent.length > 0) {
+            console.log(`📺 Found ${newContent.length} new piece(s) of content!`);
+            
+            for (const content of newContent) {
+                await notifyServersOfNewContent(client, content);
+                await markContentAsNotified(content);
+            }
+        } else {
+            console.log('📺 No new content found');
+        }
+    } catch (error) {
+        console.error('❌ Error checking for new content:', error);
+    }
+}
+
+async function checkAquaCheeseChannel() {
+    try {
+        if (!process.env.YOUTUBE_API_KEY) {
+            console.log('⚠️ YouTube API key not configured, skipping content check');
+            return [];
+        }
+
+        console.log('🔍 Fetching latest content from AquaCheese YouTube channel...');
+        
+        const newContent = [];
+        
+        // Check for new videos
+        const videos = await checkForNewVideos();
+        if (videos.length > 0) {
+            newContent.push(...videos);
+        }
+        
+        // Check for live streams
+        const liveStreams = await checkForLiveStreams();
+        if (liveStreams.length > 0) {
+            newContent.push(...liveStreams);
+        }
+        
+        // Note: Community posts require different API access
+        // For now, we'll focus on videos and live streams
+        
+        return newContent;
+        
+    } catch (error) {
+        console.error('❌ Error checking AquaCheese channel:', error.message);
+        return [];
+    }
+}
+
+async function checkForNewVideos() {
+    try {
+        const response = await youtube.search.list({
+            part: 'snippet',
+            channelId: AQUACHEESE_CHANNEL_ID,
+            order: 'date',
+            type: 'video',
+            maxResults: 5,
+            publishedAfter: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() // Last 24 hours
+        });
+        
+        const newVideos = [];
+        
+        for (const item of response.data.items) {
+            const videoId = item.id.videoId;
+            const existing = await getTrackedContent(videoId);
+            
+            if (!existing) {
+                // Get additional video details
+                const videoDetails = await youtube.videos.list({
+                    part: 'snippet,statistics,liveStreamingDetails',
+                    id: videoId
+                });
+                
+                const video = videoDetails.data.items[0];
+                if (video) {
+                    const content = {
+                        id: videoId,
+                        type: video.snippet.liveBroadcastContent === 'live' ? 'live' : 'video',
+                        title: video.snippet.title,
+                        description: video.snippet.description,
+                        url: `https://www.youtube.com/watch?v=${videoId}`,
+                        publishedAt: video.snippet.publishedAt,
+                        thumbnail: video.snippet.thumbnails.high?.url || video.snippet.thumbnails.default?.url,
+                        viewCount: video.statistics?.viewCount,
+                        channelTitle: video.snippet.channelTitle
+                    };
+                    
+                    newVideos.push(content);
+                }
+            }
+        }
+        
+        return newVideos;
+        
+    } catch (error) {
+        console.error('❌ Error checking for new videos:', error.message);
+        return [];
+    }
+}
+
+async function checkForLiveStreams() {
+    try {
+        const response = await youtube.search.list({
+            part: 'snippet',
+            channelId: AQUACHEESE_CHANNEL_ID,
+            eventType: 'live',
+            type: 'video',
+            maxResults: 5
+        });
+        
+        const liveStreams = [];
+        
+        for (const item of response.data.items) {
+            const videoId = item.id.videoId;
+            const existing = await getTrackedContent(videoId);
+            
+            if (!existing) {
+                const content = {
+                    id: videoId,
+                    type: 'live',
+                    title: item.snippet.title,
+                    description: item.snippet.description,
+                    url: `https://www.youtube.com/watch?v=${videoId}`,
+                    publishedAt: item.snippet.publishedAt,
+                    thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url,
+                    channelTitle: item.snippet.channelTitle
+                };
+                
+                liveStreams.push(content);
+            }
+        }
+        
+        return liveStreams;
+        
+    } catch (error) {
+        console.error('❌ Error checking for live streams:', error.message);
+        return [];
+    }
+}
+
+async function getTrackedContent(contentId) {
+    return new Promise((resolve, reject) => {
+        database.db.get(
+            'SELECT * FROM aquacheese_content_tracking WHERE content_id = ?',
+            [contentId],
+            (err, row) => {
+                if (err) reject(err);
+                else resolve(row);
+            }
+        );
+    });
+}
+
+async function markContentAsNotified(content) {
+    return new Promise((resolve, reject) => {
+        database.db.run(
+            `INSERT OR REPLACE INTO aquacheese_content_tracking 
+             (content_id, content_type, title, url, published_at) 
+             VALUES (?, ?, ?, ?, ?)`,
+            [content.id, content.type, content.title, content.url, content.publishedAt],
+            function(err) {
+                if (err) reject(err);
+                else resolve(this.lastID);
+            }
+        );
+    });
+}
+
+async function notifyServersOfNewContent(client, content) {
+    console.log(`📢 Notifying servers of new content: ${content.title}`);
+    
+    let notificationCount = 0;
+    
+    for (const guild of client.guilds.cache.values()) {
+        try {
+            const config = await database.getServerConfig(guild.id);
+            
+            if (config && config.announcements_channel_id) {
+                const announcementsChannel = guild.channels.cache.get(config.announcements_channel_id);
+                
+                if (announcementsChannel) {
+                    await sendContentNotification(announcementsChannel, content);
+                    notificationCount++;
+                }
+            }
+        } catch (error) {
+            console.error(`Error sending notification to ${guild.name}:`, error);
+        }
+    }
+    
+    console.log(`📬 Sent notifications to ${notificationCount} server(s)`);
+}
+
+async function sendContentNotification(channel, content) {
+    try {
+        const embed = new EmbedBuilder()
+            .setColor(0xFF0000) // YouTube red
+            .setFooter({ text: 'Made with 🧀 by AquaCheese • YouTube Notifications' });
+        
+        // Truncate description if too long
+        const maxDescLength = 300;
+        let description = content.description || '';
+        if (description.length > maxDescLength) {
+            description = description.substring(0, maxDescLength) + '...';
+        }
+        
+        switch (content.type) {
+            case 'video':
+                embed.setTitle('🎬 New AquaCheese Video!')
+                    .setDescription(`**${content.title}**${description ? `\n\n${description}` : ''}`)
+                    .addFields(
+                        { name: '📺 Watch Now', value: `[Click here to watch](${content.url})`, inline: true },
+                        { name: '🔔 Subscribe', value: '[Subscribe for more](https://www.youtube.com/@aquacheese1?sub_confirmation=1)', inline: true }
+                    );
+                
+                if (content.viewCount) {
+                    embed.addFields({ name: '👀 Views', value: formatNumber(content.viewCount), inline: true });
+                }
+                break;
+                
+            case 'live':
+                embed.setTitle('🔴 AquaCheese is Live!')
+                    .setDescription(`**${content.title}**${description ? `\n\n${description}` : '\n\nAquaCheese is streaming live right now!'}`)
+                    .addFields(
+                        { name: '🔴 Watch Live', value: `[Join the stream](${content.url})`, inline: true },
+                        { name: '💬 Chat', value: `[Participate in chat](${content.url})`, inline: true },
+                        { name: '⚡ Status', value: 'Live Now!', inline: true }
+                    );
+                break;
+                
+            case 'community':
+                embed.setTitle('📝 New AquaCheese Community Post!')
+                    .setDescription(`**${content.title}**${description ? `\n\n${description}` : '\n\nAquaCheese shared a new community post!'}`)
+                    .addFields(
+                        { name: '👀 View Post', value: `[See the post](${content.url})`, inline: true },
+                        { name: '💭 Interact', value: `[Like and comment](${content.url})`, inline: true }
+                    );
+                break;
+                
+            default:
+                embed.setTitle('📺 New AquaCheese Content!')
+                    .setDescription(`**${content.title}**${description ? `\n\n${description}` : '\n\nNew content from AquaCheese!'}`)
+                    .addFields(
+                        { name: '🔗 View Content', value: `[Click here](${content.url})`, inline: true }
+                    );
+        }
+        
+        if (content.thumbnail) {
+            embed.setThumbnail(content.thumbnail);
+        }
+        
+        if (content.publishedAt) {
+            embed.setTimestamp(new Date(content.publishedAt));
+        }
+        
+        // Add channel info
+        if (content.channelTitle) {
+            embed.setAuthor({ 
+                name: content.channelTitle, 
+                url: 'https://www.youtube.com/@aquacheese1',
+                iconURL: 'https://github.com/AquaCheese.png'
+            });
+        }
+        
+        await channel.send({
+            content: '🧀 **New content from AquaCheese!** 🎉\n@everyone',
+            embeds: [embed]
+        });
+        
+        console.log(`✅ Sent ${content.type} notification to ${channel.guild.name}#${channel.name}`);
+    } catch (error) {
+        console.error(`❌ Error sending notification to ${channel.guild.name}#${channel.name}:`, error);
+    }
+}
+
+// Helper function to format large numbers
+function formatNumber(num) {
+    const number = parseInt(num);
+    if (number >= 1000000) {
+        return (number / 1000000).toFixed(1) + 'M';
+    } else if (number >= 1000) {
+        return (number / 1000).toFixed(1) + 'K';
+    }
+    return number.toLocaleString();
+}
+
+// Manual trigger for testing (admin command)
+async function triggerTestNotification(client, guildId) {
+    const testContent = {
+        id: `test_${Date.now()}`,
+        type: 'video',
+        title: '🧪 Test Notification - AquaCheese Bot',
+        description: 'This is a test notification to verify the YouTube notification system is working correctly!',
+        url: 'https://www.youtube.com/@aquacheese1',
+        publishedAt: new Date().toISOString(),
+        thumbnail: 'https://github.com/AquaCheese.png'
+    };
+    
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return false;
+    
+    const config = await database.getServerConfig(guildId);
+    if (!config || !config.announcements_channel_id) return false;
+    
+    const channel = guild.channels.cache.get(config.announcements_channel_id);
+    if (!channel) return false;
+    
+    await sendContentNotification(channel, testContent);
+    return true;
+}
 
 // Update monitoring functions
 async function initializeUpdateMonitoring(client) {
@@ -917,6 +1288,13 @@ client.once(Events.ClientReady, async readyClient => {
         console.error('❌ Failed to initialize update monitoring:', error);
     }
     
+    // Initialize YouTube monitoring system
+    try {
+        await initializeYouTubeMonitoring(readyClient);
+    } catch (error) {
+        console.error('❌ Failed to initialize YouTube monitoring:', error);
+    }
+    
     // Register slash commands globally
     try {
         console.log('Started refreshing application (/) commands.');
@@ -1021,6 +1399,13 @@ async function handleButton(interaction) {
             await showWarningConfigModal(interaction);
         } else if (customId === 'setup_back') {
             await handleSetupBack(interaction);
+        }
+        
+        // YouTube announcements buttons
+        else if (customId === 'aquacheese_announcements_toggle') {
+            await handleAquaCheeseAnnouncementsToggle(interaction);
+        } else if (customId === 'youtube_channel_configure') {
+            await handleYouTubeChannelConfigure(interaction);
         }
         
         // Panic mode buttons
@@ -1238,6 +1623,11 @@ async function handleMainMenuSelection(interaction, selectedValue) {
             case 'warning_system':
                 const warningMenu = await setupSystem.createWarningSystemMenu(interaction.guild.id);
                 await interaction.update(warningMenu);
+                break;
+                
+            case 'youtube_announcements':
+                const youtubeMenu = await setupSystem.createYouTubeAnnouncementsMenu(interaction.guild.id);
+                await interaction.update(youtubeMenu);
                 break;
                 
             case 'view_config':
@@ -1855,6 +2245,10 @@ async function handleSlashCommand(interaction) {
                 await handleFontSetupCommand(interaction);
                 break;
             
+            case 'testnotification':
+                await handleTestNotificationCommand(interaction);
+                break;
+            
             default:
                 await interaction.reply({ content: 'Unknown command!', flags: MessageFlags.Ephemeral });
         }
@@ -1970,17 +2364,25 @@ async function handleSetupCommand(interaction) {
 async function handleConfigCommand(interaction) {
     const adminChannel = interaction.options.getChannel('admin-channel');
     const logsChannel = interaction.options.getChannel('logs-channel');
+    const announcementsChannel = interaction.options.getChannel('announcements-channel');
     
     try {
         // Check if this is the first configuration for this server
         const existingConfig = await database.getServerConfig(interaction.guild.id);
         const isFirstSetup = !existingConfig || !existingConfig.admin_channel_id;
         
-        await database.setServerConfig(interaction.guild.id, {
+        const configData = {
             adminChannelId: adminChannel.id,
             logsChannelId: logsChannel.id,
             safeRoles: []
-        });
+        };
+        
+        // Add announcements channel if provided
+        if (announcementsChannel) {
+            configData.announcementsChannelId = announcementsChannel.id;
+        }
+        
+        await database.setServerConfig(interaction.guild.id, configData);
         
         // If this is the first setup, save to setup history
         if (isFirstSetup) {
@@ -2000,19 +2402,33 @@ async function handleConfigCommand(interaction) {
             });
         }
         
+        const embedFields = [
+            { name: 'Admin Channel', value: `<#${adminChannel.id}>`, inline: true },
+            { name: 'Logs Channel', value: `<#${logsChannel.id}>`, inline: true }
+        ];
+        
+        if (announcementsChannel) {
+            embedFields.push({ name: 'Announcements Channel', value: `<#${announcementsChannel.id}>`, inline: true });
+        }
+        
         const embed = new EmbedBuilder()
             .setTitle('✅ Configuration Updated')
             .setDescription('Server configuration has been set up successfully!')
-            .addFields(
-                { name: 'Admin Channel', value: `<#${adminChannel.id}>`, inline: true },
-                { name: 'Logs Channel', value: `<#${logsChannel.id}>`, inline: true }
-            )
+            .addFields(embedFields)
             .setColor(0x4ECDC4);
         
         if (isFirstSetup) {
             embed.addFields({
                 name: '🔄 Next Steps',
                 value: `• Use \`/setup\` in <#${adminChannel.id}> to configure security features\n• Set up authentication with \`/login\` for enhanced security\n• Configure moderation settings as needed`,
+                inline: false
+            });
+        }
+        
+        if (announcementsChannel) {
+            embed.addFields({
+                name: '📺 YouTube Notifications',
+                value: `AquaCheese YouTube notifications will be posted to <#${announcementsChannel.id}>!\n• New videos\n• Live streams\n• Community posts`,
                 inline: false
             });
         }
@@ -4862,6 +5278,83 @@ async function showRaidConfigModal(interaction) {
     const modal = new ModalBuilder()
         .setCustomId('raid_config_modal')
         .setTitle('Raid Protection Configuration');
+
+async function handleAquaCheeseAnnouncementsToggle(interaction) {
+    try {
+        const guildId = interaction.guild.id;
+        const config = await database.getServerConfig(guildId);
+        
+        // Toggle the AquaCheese announcements setting
+        const newValue = !config?.aquacheese_announcements;
+        await database.updateServerConfig(guildId, { aquacheese_announcements: newValue });
+        
+        // Update the YouTube announcements menu to show new state
+        const youtubeMenu = await setupSystem.createYouTubeAnnouncementsMenu(guildId);
+        await interaction.update(youtubeMenu);
+        
+        console.log(`✅ AquaCheese announcements ${newValue ? 'enabled' : 'disabled'} for ${interaction.guild.name}`);
+    } catch (error) {
+        console.error('AquaCheese announcements toggle error:', error);
+        await interaction.reply({ content: 'Failed to toggle AquaCheese announcements!', flags: [4096] });
+    }
+}
+
+async function handleYouTubeChannelConfigure(interaction) {
+    try {
+        const config = await database.getServerConfig(interaction.guild.id);
+        
+        const embed = new EmbedBuilder()
+            .setTitle('📺 YouTube Channel Configuration')
+            .setDescription('Configure YouTube channels and announcements for your server')
+            .setColor(0xFF0000)
+            .addFields(
+                { 
+                    name: '📢 Announcements Channel', 
+                    value: config?.announcements_channel_id ? 
+                        `Currently set to <#${config.announcements_channel_id}>` : 
+                        'Not configured - use `/config` to set up', 
+                    inline: false 
+                },
+                { 
+                    name: '🎬 Server YouTube Channel', 
+                    value: config?.youtube_channel_id ? 
+                        `Currently monitoring: \`${config.youtube_channel_id}\`` : 
+                        'Not configured - use `/yt setup` to set up', 
+                    inline: false 
+                },
+                { 
+                    name: '🧀 AquaCheese Notifications', 
+                    value: config?.aquacheese_announcements ? 
+                        '✅ Enabled - You\'ll receive notifications for new AquaCheese content' : 
+                        '❌ Disabled - Use the toggle button to enable', 
+                    inline: false 
+                },
+                { 
+                    name: '⚙️ Configuration Commands', 
+                    value: '• `/config` - Set announcements channel\n• `/yt setup` - Configure server YouTube channel\n• Use the setup menu to toggle AquaCheese announcements\n• `/testnotification` - Test the notification system (Admin only)', 
+                    inline: false 
+                },
+                { 
+                    name: '📋 How it works', 
+                    value: '1. **Set an announcements channel** with `/config`\n2. **Enable AquaCheese announcements** in this menu\n3. **Optionally configure your server\'s YouTube channel** with `/yt setup`\n4. **Enjoy automatic notifications** for new content!', 
+                    inline: false 
+                }
+            );
+
+        const buttons = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('setup_back')
+                    .setLabel('Back to YouTube Menu')
+                    .setStyle(ButtonStyle.Secondary)
+            );
+
+        await interaction.update({ embeds: [embed], components: [buttons] });
+    } catch (error) {
+        console.error('YouTube channel configure error:', error);
+        await interaction.reply({ content: 'Failed to show channel configuration!', flags: [4096] });
+    }
+}
 
     const userThresholdInput = new TextInputBuilder()
         .setCustomId('raid_user_threshold')
@@ -8161,6 +8654,12 @@ async function handleCancelReset(interaction, guildId) {
 // YouTube Integration Functions
 const AQUACHEESE_CHANNEL_ID = 'UCbVnPJUF_k5X2Tk5YjgEIpQ'; // AquaCheese channel ID
 
+// Initialize YouTube API
+const youtube = google.youtube({
+    version: 'v3',
+    auth: process.env.YOUTUBE_API_KEY
+});
+
 async function handleYouTubeCommand(interaction) {
     const subcommand = interaction.options.getSubcommand();
     
@@ -8984,6 +9483,92 @@ async function handleCaptionCommand(interaction) {
         } catch (replyError) {
             console.error('Failed to send error message:', replyError);
         }
+    }
+}
+
+// Test notification command handler
+async function handleTestNotificationCommand(interaction) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    
+    try {
+        // Check if user has admin permissions
+        if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+            const embed = new EmbedBuilder()
+                .setTitle('❌ Access Denied')
+                .setDescription('Only administrators can use this command.')
+                .setColor(0xE74C3C);
+            
+            return await interaction.editReply({ embeds: [embed] });
+        }
+        
+        // Check if announcements channel is configured
+        const config = await database.getServerConfig(interaction.guild.id);
+        if (!config || !config.announcements_channel_id) {
+            const embed = new EmbedBuilder()
+                .setTitle('⚠️ No Announcements Channel Configured')
+                .setDescription('Please configure an announcements channel first using `/config announcements-channel:#channel`.')
+                .setColor(0xF39C12);
+            
+            return await interaction.editReply({ embeds: [embed] });
+        }
+        
+        // Verify the channel exists and bot has permissions
+        const channel = interaction.guild.channels.cache.get(config.announcements_channel_id);
+        if (!channel) {
+            const embed = new EmbedBuilder()
+                .setTitle('❌ Announcements Channel Not Found')
+                .setDescription('The configured announcements channel no longer exists. Please reconfigure it.')
+                .setColor(0xE74C3C);
+            
+            return await interaction.editReply({ embeds: [embed] });
+        }
+        
+        // Check bot permissions
+        const botMember = interaction.guild.members.cache.get(client.user.id);
+        const permissions = channel.permissionsFor(botMember);
+        
+        if (!permissions.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks])) {
+            const embed = new EmbedBuilder()
+                .setTitle('❌ Insufficient Permissions')
+                .setDescription(`I don't have the required permissions in ${channel}. Please ensure I have:\n• View Channel\n• Send Messages\n• Embed Links`)
+                .setColor(0xE74C3C);
+            
+            return await interaction.editReply({ embeds: [embed] });
+        }
+        
+        // Send test notification
+        const success = await triggerTestNotification(client, interaction.guild.id);
+        
+        if (success) {
+            const embed = new EmbedBuilder()
+                .setTitle('✅ Test Notification Sent')
+                .setDescription(`Test YouTube notification has been sent to ${channel}!`)
+                .addFields(
+                    { name: '📺 Channel', value: `${channel}`, inline: true },
+                    { name: '🎯 Type', value: 'Test Notification', inline: true },
+                    { name: '⏰ Time', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true }
+                )
+                .setColor(0x00FF00)
+                .setFooter({ text: 'YouTube Notification System • Test Mode' });
+            
+            await interaction.editReply({ embeds: [embed] });
+        } else {
+            const embed = new EmbedBuilder()
+                .setTitle('❌ Test Failed')
+                .setDescription('Failed to send test notification. Please check the bot\'s permissions and try again.')
+                .setColor(0xE74C3C);
+            
+            await interaction.editReply({ embeds: [embed] });
+        }
+        
+    } catch (error) {
+        console.error('Error in test notification command:', error);
+        const embed = new EmbedBuilder()
+            .setTitle('❌ Error')
+            .setDescription('An error occurred while sending the test notification.')
+            .setColor(0xE74C3C);
+        
+        await interaction.editReply({ embeds: [embed] });
     }
 }
 
