@@ -835,100 +835,46 @@ async function notifyRestart(client, restartCount) {
     }
 }
 
-// Font initialization function with better error handling
+// Simplified, bulletproof font initialization
 async function initializeFonts() {
+    console.log('🔤 Initializing font system (simplified)...');
+    
+    // Don't try to be fancy - just ensure basic fonts work
     try {
-        const fontsDir = path.join(__dirname, 'fonts');
+        // Test basic Canvas text rendering
+        const testCanvas = createCanvas(100, 50);
+        const testCtx = testCanvas.getContext('2d');
         
-        // Suppress Fontconfig warnings/errors (common in containers)
-        process.env.FONTCONFIG_PATH = '/dev/null';
+        // Test Arial (most reliable font)
+        testCtx.font = '20px Arial';
+        const arialTest = testCtx.measureText('TEST');
         
-        const impactFontPath = path.join(fontsDir, 'impact.ttf');
-        
-        // Check if Impact font already exists
-        if (fs.existsSync(impactFontPath)) {
-            console.log('✅ Impact font found, registering...');
-            try {
-                registerFont(impactFontPath, { family: 'Impact' });
-                console.log('✅ Impact font registered successfully');
-                return true;
-            } catch (regError) {
-                console.warn('⚠️ Impact font registration failed:', regError.message);
-            }
+        if (arialTest.width > 0) {
+            console.log('✅ Arial font is working properly');
+        } else {
+            console.warn('⚠️ Arial font test failed, but continuing anyway');
         }
         
-        console.log('📥 Impact font not found, attempting to download...');
-        
-        // Try to download Impact font from a reliable source
+        // Try Impact if available, but don't stress if it fails
         try {
-            // Download Impact font from Google Fonts (closest alternative: Anton)
-            const antonUrl = 'https://fonts.gstatic.com/s/anton/v23/1Ptgg87LROyAm3K8-C8CSKlv.ttf';
+            testCtx.font = '20px Impact, Arial';
+            const impactTest = testCtx.measureText('TEST');
             
-            console.log('📥 Downloading Anton font (Impact alternative)...');
-            const response = await axios.get(antonUrl, { responseType: 'arraybuffer' });
-            
-            // Ensure fonts directory exists
-            if (!fs.existsSync(fontsDir)) {
-                fs.mkdirSync(fontsDir, { recursive: true });
+            if (impactTest.width > 0) {
+                console.log('✅ Impact font appears to be available');
+            } else {
+                console.log('📝 Impact font not available, using Arial');
             }
-            
-            const antonFontPath = path.join(fontsDir, 'anton.ttf');
-            fs.writeFileSync(antonFontPath, response.data);
-            
-            // Register Anton as Impact for meme compatibility
-            try {
-                registerFont(antonFontPath, { family: 'Impact' });
-                console.log('✅ Anton font downloaded and registered as Impact');
-                return true;
-            } catch (regError) {
-                console.warn('⚠️ Anton font registration failed:', regError.message);
-            }
-            
-        } catch (downloadError) {
-            console.error('❌ Failed to download font:', downloadError.message);
+        } catch (impactError) {
+            console.log('📝 Impact font test failed, using Arial fallback');
         }
         
-        // Try to check if Impact is available as a system font
-        try {
-            console.log('💡 Checking for system Impact font...');
-            
-            // Create a test canvas to see if Impact renders properly
-            const testCanvas = createCanvas(100, 50);
-            const testCtx = testCanvas.getContext('2d');
-            
-            // Test multiple font configurations
-            const testFonts = [
-                'Impact',
-                'Arial Black',
-                'Helvetica Neue',
-                'Arial'
-            ];
-            
-            for (const testFont of testFonts) {
-                try {
-                    testCtx.font = `20px ${testFont}`;
-                    const metrics = testCtx.measureText('TEST');
-                    if (metrics.width > 0) {
-                        console.log(`✅ System font "${testFont}" is available`);
-                        break;
-                    }
-                } catch (fontError) {
-                    console.log(`⚠️ Font "${testFont}" not available`);
-                }
-            }
-            
-            console.log('✅ System fonts available for fallback');
-            return true;
-            
-        } catch (systemError) {
-            console.log('⚠️ System font test failed:', systemError.message);
-            console.log('💡 Will use basic sans-serif font as ultimate fallback');
-            return false;
-        }
+        console.log('✅ Font system initialized (simplified approach)');
+        return true;
         
     } catch (error) {
-        console.error('❌ Font initialization error:', error);
-        console.log('💡 Will use system Arial font as fallback');
+        console.error('❌ Font initialization error:', error.message);
+        console.log('💡 Continuing with system default fonts');
         return false;
     }
 }
@@ -8713,89 +8659,42 @@ async function handleCaptionCommand(interaction) {
             fontSizeOption
         );
         
-        // Use multiple font fallbacks with better error handling
-        const fontFamily = [
-            'Impact',           // Windows system font
-            'Arial Black',      // Windows fallback
-            'Helvetica Neue',   // Mac fallback
-            'Arial',            // Universal fallback
-            'sans-serif'        // Browser fallback
-        ].join(', ');
+        // Ultra-simple, foolproof font system - just use Arial
+        console.log('🎨 Setting up ultra-reliable font system...');
         
-        ctx.font = `bold ${fontSize}px ${fontFamily}`;
+        // Force simple Arial font - most reliable across all systems
+        ctx.font = `bold ${fontSize}px Arial`;
         ctx.fillStyle = 'white';
         ctx.strokeStyle = 'black';
-        ctx.lineWidth = Math.max(fontSize / 12, 4); // Thicker outline for better visibility
+        ctx.lineWidth = Math.max(fontSize / 6, 6); // Extra thick outline
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
+        ctx.imageSmoothingEnabled = false; // Cleaner text
         
-        // Force text rendering quality and anti-aliasing
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.textRenderingOptimization = 'optimizeQuality';
-        
-        // Test if font is working by measuring text and trying fallbacks
-        let fontWorking = false;
-        const testText = 'TEST';
-        let testMetrics = ctx.measureText(testText);
-        console.log(`Font test: width=${testMetrics.width}, font="${ctx.font}"`);
-        
-        if (testMetrics.width > 0) {
-            fontWorking = true;
-        } else {
-            console.warn('Primary font measurement failed, trying Arial fallback');
-            ctx.font = `bold ${fontSize}px Arial, sans-serif`;
-            testMetrics = ctx.measureText(testText);
-            console.log(`Arial fallback test: width=${testMetrics.width}, font="${ctx.font}"`);
-            
-            if (testMetrics.width > 0) {
-                fontWorking = true;
-            } else {
-                console.warn('Arial fallback also failed, using system default');
-                ctx.font = `bold ${fontSize}px sans-serif`;
-                fontWorking = true; // Assume it works
-            }
+        // Test font measurement (but don't fail if it doesn't work)
+        try {
+            const testMetrics = ctx.measureText('TEST');
+            console.log(`✅ Font system ready: Arial ${fontSize}px (test width: ${testMetrics.width})`);
+        } catch (testError) {
+            console.log('⚠️ Font test failed, but continuing anyway');
         }
         
-        // Robust function to wrap text and draw it for all image sizes
+        // Ultra-simple, bulletproof text drawing
         function drawMemeText(text, x, y, maxWidth) {
+            if (!text || text.trim() === '') return;
+            
             const sanitizedText = text.toString().trim().toUpperCase();
-            if (!sanitizedText) return;
+            console.log(`📝 Drawing: "${sanitizedText}"`);
             
-            console.log(`Drawing text: "${sanitizedText}" at ${x},${y} with maxWidth ${maxWidth}`);
-            
-            // Enhanced word wrapping for longer text support
-            const words = sanitizedText.split(/\s+/);
+            // Very simple word wrapping
+            const words = sanitizedText.split(' ');
             const lines = [];
             let currentLine = '';
             
-            // For very long words, break them into smaller chunks
-            const processedWords = [];
             for (const word of words) {
-                if (word.length > 15) {
-                    // Break very long words into chunks
-                    for (let i = 0; i < word.length; i += 12) {
-                        processedWords.push(word.substring(i, i + 12));
-                    }
-                } else {
-                    processedWords.push(word);
-                }
-            }
-            
-            // Advanced word wrapping with fallback
-            for (const word of processedWords) {
                 const testLine = currentLine + (currentLine ? ' ' : '') + word;
-                
-                let textWidth;
-                try {
-                    const metrics = ctx.measureText(testLine);
-                    textWidth = metrics.width;
-                } catch (error) {
-                    // More accurate fallback text width estimation based on font size
-                    textWidth = testLine.length * fontSize * 0.55;
-                }
-                
-                if (textWidth > maxWidth && currentLine) {
+                // Simple character-based width estimation
+                if (testLine.length * fontSize * 0.6 > maxWidth && currentLine) {
                     lines.push(currentLine);
                     currentLine = word;
                 } else {
@@ -8803,108 +8702,51 @@ async function handleCaptionCommand(interaction) {
                 }
             }
             
-            if (currentLine) {
-                lines.push(currentLine);
-            }
+            if (currentLine) lines.push(currentLine);
             
-            console.log(`Text lines: ${lines.length}, content: ${JSON.stringify(lines)}`);
+            // Simple line positioning
+            const lineHeight = fontSize * 1.1;
+            const startY = y - ((lines.length - 1) * lineHeight) / 2;
             
-            // Enhanced positioning for multiple lines and small fonts
-            let lineHeight;
-            if (fontSize < 20) {
-                lineHeight = fontSize * 1.05; // Tighter spacing for small fonts
-            } else if (lines.length > 3) {
-                lineHeight = fontSize * 0.95; // Tighter spacing for many lines
-            } else {
-                lineHeight = fontSize * 1.1; // Normal spacing
-            }
-            const totalHeight = lines.length * lineHeight;
-            const startY = y - (totalHeight / 2) + (lineHeight / 2);
-            
-            // Draw each line with enhanced rendering techniques to ensure visibility
+            // Draw each line with maximum reliability
             lines.forEach((line, index) => {
                 const lineY = startY + (index * lineHeight);
                 
+                console.log(`  Line ${index + 1}: "${line}" at y=${lineY}`);
+                
                 try {
-                    // Enhanced rendering with multiple passes for better visibility
-                    
-                    // Pass 1: Black outline/shadow (multiple passes for thickness)
-                    ctx.fillStyle = 'black';
+                    // Method 1: Thick black stroke
                     ctx.strokeStyle = 'black';
-                    
-                    // Create thick black outline by drawing multiple offset copies
-                    const outlineSize = Math.max(fontSize / 15, 2);
-                    for (let offsetX = -outlineSize; offsetX <= outlineSize; offsetX++) {
-                        for (let offsetY = -outlineSize; offsetY <= outlineSize; offsetY++) {
-                            if (offsetX !== 0 || offsetY !== 0) {
-                                ctx.fillText(line, x + offsetX, lineY + offsetY);
-                            }
-                        }
-                    }
-                    
-                    // Pass 2: Traditional stroke outline
-                    ctx.strokeStyle = 'black';
-                    ctx.lineWidth = Math.max(fontSize / 8, 3);
+                    ctx.lineWidth = Math.max(fontSize / 5, 8); // Very thick
                     ctx.strokeText(line, x, lineY);
                     
-                    // Pass 3: White fill text
+                    // Method 2: White fill
                     ctx.fillStyle = 'white';
                     ctx.fillText(line, x, lineY);
                     
-                    // Pass 4: Additional contrast for small fonts
-                    if (fontSize < 25) {
-                        // Add extra black shadow for small text
-                        ctx.fillStyle = 'black';
-                        ctx.fillText(line, x + 2, lineY + 2);
-                        ctx.fillText(line, x - 1, lineY - 1);
-                        
-                        // Re-apply white text on top
-                        ctx.fillStyle = 'white';
-                        ctx.fillText(line, x, lineY);
-                    }
+                    // Method 3: Extra black shadows for contrast
+                    ctx.fillStyle = 'black';
+                    ctx.fillText(line, x + 3, lineY + 3);
+                    ctx.fillText(line, x - 2, lineY - 2);
+                    ctx.fillText(line, x + 2, lineY - 2);
+                    ctx.fillText(line, x - 2, lineY + 2);
                     
-                    console.log(`Drew line ${index + 1}: "${line}" at y=${lineY} with enhanced rendering`);
+                    // Method 4: Final white text
+                    ctx.fillStyle = 'white';
+                    ctx.fillText(line, x, lineY);
+                    
+                    console.log(`    ✅ Success`);
                     
                 } catch (error) {
-                    console.error('Text rendering error for line:', line, error);
+                    console.error(`    ❌ Failed: ${error.message}`);
                     
-                    // Emergency fallback 1: Simple fill without stroke
+                    // Emergency: just draw white text
                     try {
-                        console.log('Trying simple fill fallback...');
                         ctx.fillStyle = 'white';
                         ctx.fillText(line, x, lineY);
-                        
-                        ctx.fillStyle = 'black';
-                        ctx.fillText(line, x + 1, lineY + 1);
-                        
-                        ctx.fillStyle = 'white';
-                        ctx.fillText(line, x, lineY);
-                        
-                    } catch (simpleFallbackError) {
-                        console.error('Simple fallback failed:', simpleFallbackError);
-                        
-                        // Emergency fallback 2: Character by character
-                        try {
-                            console.log('Trying character-by-character fallback...');
-                            const charSpacing = fontSize * 0.6;
-                            const startX = x - (line.length * charSpacing) / 2;
-                            
-                            for (let i = 0; i < line.length; i++) {
-                                const char = line[i];
-                                const charX = startX + (i * charSpacing);
-                                
-                                // Black shadow
-                                ctx.fillStyle = 'black';
-                                ctx.fillText(char, charX + 1, lineY + 1);
-                                
-                                // White character
-                                ctx.fillStyle = 'white';
-                                ctx.fillText(char, charX, lineY);
-                            }
-                            
-                        } catch (charFallbackError) {
-                            console.error('Character fallback also failed:', charFallbackError);
-                        }
+                        console.log(`    🔧 Emergency fallback used`);
+                    } catch (emergencyError) {
+                        console.error(`    💥 Complete failure: ${emergencyError.message}`);
                     }
                 }
             });
@@ -8959,7 +8801,7 @@ async function handleCaptionCommand(interaction) {
             .setDescription(`${topText ? `**Top:** ${topText.length > 50 ? topText.substring(0, 50) + '...' : topText}\n` : ''}${bottomText ? `**Bottom:** ${bottomText.length > 50 ? bottomText.substring(0, 50) + '...' : bottomText}\n` : ''}**Font Size:** ${fontSizeDisplay}`)
             .setImage('attachment://meme.png')
             .setColor(0xFFD700)
-            .setFooter({ text: 'Made with 🧀 by AquaCheese • Auto-optimized for perfect fit!' });
+            .setFooter({ text: 'Made with 🧀 by AquaCheese • Ultra-reliable text rendering!' });
         
         console.log('Sending response...');
         
