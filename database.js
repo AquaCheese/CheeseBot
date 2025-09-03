@@ -383,6 +383,16 @@ class Database {
             )
         `);
 
+        // Bot status table for version tracking
+        this.db.run(`
+            CREATE TABLE IF NOT EXISTS bot_status (
+                id INTEGER PRIMARY KEY,
+                last_version TEXT,
+                last_restart TEXT DEFAULT (datetime('now')),
+                restart_count INTEGER DEFAULT 1
+            )
+        `);
+
         // Run migrations
         this.runMigrations();
     }
@@ -1419,6 +1429,28 @@ class Database {
             this.db.run(query, values, function(err) {
                 if (err) reject(err);
                 else resolve(this.changes);
+            });
+        });
+    }
+
+    async createServerConfig(guildId, config = {}) {
+        return new Promise((resolve, reject) => {
+            const fields = ['guild_id'];
+            const placeholders = ['?'];
+            const values = [guildId];
+            
+            // Add any provided config fields
+            for (const [key, value] of Object.entries(config)) {
+                fields.push(key);
+                placeholders.push('?');
+                values.push(value);
+            }
+            
+            const query = `INSERT OR REPLACE INTO server_configs (${fields.join(', ')}) VALUES (${placeholders.join(', ')})`;
+            
+            this.db.run(query, values, function(err) {
+                if (err) reject(err);
+                else resolve(this.lastID);
             });
         });
     }

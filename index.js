@@ -633,16 +633,6 @@ async function initializeUpdateMonitoring(client) {
             )
         `).run();
 
-        // Create bot status table if it doesn't exist
-        database.db.prepare(`
-            CREATE TABLE IF NOT EXISTS bot_status (
-                id INTEGER PRIMARY KEY,
-                last_version TEXT,
-                last_restart TEXT DEFAULT (datetime('now')),
-                restart_count INTEGER DEFAULT 1
-            )
-        `).run();
-
         // Check for version changes or restarts
         await checkForUpdatesOrRestarts(client);
         
@@ -8132,6 +8122,7 @@ async function handleAquaCheeseCommand(interaction) {
 async function getChannelIdFromConfig(guildId) {
     try {
         const config = await database.getServerConfig(guildId);
+        console.log(`🔍 Debug - Config for guild ${guildId}:`, config?.youtube_channel_id || 'NOT FOUND');
         return config?.youtube_channel_id || null;
     } catch (error) {
         console.error('Error getting channel ID from config:', error);
@@ -8294,8 +8285,19 @@ async function handleYouTubeSetup(interaction) {
     }
     
     try {
-        // Save to database
-        await database.updateServerConfig(interaction.guild.id, { youtube_channel_id: channelId });
+        // Check if server config exists, create if not
+        let config = await database.getServerConfig(interaction.guild.id);
+        if (!config) {
+            // Create initial server config
+            await database.createServerConfig(interaction.guild.id, {
+                youtube_channel_id: channelId
+            });
+        } else {
+            // Update existing config
+            await database.updateServerConfig(interaction.guild.id, { youtube_channel_id: channelId });
+        }
+        
+        console.log(`✅ YouTube channel configured for ${interaction.guild.name}: ${channelId}`);
         
         const embed = new EmbedBuilder()
             .setTitle('✅ YouTube Channel Configured')
