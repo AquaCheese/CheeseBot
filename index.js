@@ -8530,6 +8530,12 @@ async function handleAquaCheeseChannel(interaction) {
 
 // Caption command handler
 async function handleCaptionCommand(interaction) {
+    // Force memory cleanup at start
+    if (global.gc) {
+        global.gc();
+        console.log('🧹 Memory cleanup performed');
+    }
+    
     try {
         await interaction.deferReply();
         
@@ -8537,6 +8543,13 @@ async function handleCaptionCommand(interaction) {
         const topText = interaction.options.getString('top_text') || '';
         const bottomText = interaction.options.getString('bottom_text') || '';
         const fontSizeOption = interaction.options.getString('font_size') || 'auto';
+        
+        console.log(`\n🎭 === NEW MEME GENERATION ===`);
+        console.log(`Timestamp: ${new Date().toISOString()}`);
+        console.log(`User: ${interaction.user.tag}`);
+        console.log(`Top text: "${topText}" (${topText.length} chars)`);
+        console.log(`Bottom text: "${bottomText}" (${bottomText.length} chars)`);
+        console.log(`Font option: ${fontSizeOption}`);
         
         // Validate attachment
         if (!attachment) {
@@ -8564,12 +8577,39 @@ async function handleCaptionCommand(interaction) {
         const image = await loadImage(attachment.url);
         console.log(`Image loaded: ${image.width}x${image.height}`);
         
+        // Add debugging for canvas creation
+        console.log('🖼️ Creating fresh canvas...');
+        const canvasStartTime = Date.now();
+        
         // Create canvas with same dimensions as the image
         const canvas = createCanvas(image.width, image.height);
         const ctx = canvas.getContext('2d');
         
+        console.log(`✅ Canvas created in ${Date.now() - canvasStartTime}ms`);
+        console.log(`📊 Canvas info:
+  Width: ${canvas.width}
+  Height: ${canvas.height}
+  Context type: ${ctx.constructor.name}`);
+        
+        // FORCE COMPLETE RESET of canvas state
+        console.log('🔄 Saving clean canvas state...');
+        ctx.save(); // Save clean state
+        
         // Draw the original image
+        console.log('🖼️ Drawing base image...');
         ctx.drawImage(image, 0, 0);
+        console.log('✅ Base image drawn');
+        
+        console.log('🔄 Resetting canvas state for fresh font rendering...');
+        
+        // COMPLETELY reset all text properties from scratch every time
+        ctx.restore(); // Restore clean state
+        ctx.save(); // Save again for our use
+        
+        // Draw image again after reset
+        console.log('🖼️ Redrawing image after state reset...');
+        ctx.drawImage(image, 0, 0);
+        console.log('✅ Image redrawn after reset');
         
         // Configure text style with intelligent auto-sizing
         // Calculate optimal font size based on image dimensions and text length
@@ -8659,41 +8699,115 @@ async function handleCaptionCommand(interaction) {
             fontSizeOption
         );
         
-        // Ultra-simple, foolproof font system - just use Arial
-        console.log('🎨 Setting up ultra-reliable font system...');
+        // Ultra-simple, foolproof font system with complete reset every time
+        console.log('🎨 Setting up completely fresh font system...');
         
-        // Force simple Arial font - most reliable across all systems
-        ctx.font = `bold ${fontSize}px Arial`;
-        ctx.fillStyle = 'white';
-        ctx.strokeStyle = 'black';
-        ctx.lineWidth = Math.max(fontSize / 6, 6); // Extra thick outline
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.imageSmoothingEnabled = false; // Cleaner text
+        // FORCE RESET ALL CANVAS PROPERTIES
+        ctx.textAlign = 'start'; // Reset to default
+        ctx.textBaseline = 'alphabetic'; // Reset to default
+        ctx.fillStyle = 'black'; // Reset to default
+        ctx.strokeStyle = 'black'; // Reset to default
+        ctx.lineWidth = 1; // Reset to default
+        ctx.font = '10px sans-serif'; // Reset to default
         
-        // Test font measurement (but don't fail if it doesn't work)
+        console.log('🔄 Canvas properties reset to defaults');
+        
+        // NOW set our properties with extensive logging
+        const targetFont = `bold ${fontSize}px Arial`;
+        console.log(`🎯 Setting font to: "${targetFont}"`);
+        
         try {
-            const testMetrics = ctx.measureText('TEST');
-            console.log(`✅ Font system ready: Arial ${fontSize}px (test width: ${testMetrics.width})`);
-        } catch (testError) {
-            console.log('⚠️ Font test failed, but continuing anyway');
+            ctx.font = targetFont;
+            console.log(`✅ Font set successfully: "${ctx.font}"`);
+        } catch (fontError) {
+            console.error(`❌ Font setting failed: ${fontError.message}`);
+            ctx.font = 'bold 20px Arial'; // Emergency fallback
+            console.log(`🚨 Using emergency font: "${ctx.font}"`);
         }
         
-        // Ultra-simple, bulletproof text drawing
+        // Set other properties with logging
+        console.log('🔧 Setting text properties...');
+        ctx.fillStyle = 'white';
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = Math.max(fontSize / 5, 8);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.imageSmoothingEnabled = false;
+        
+        console.log(`📊 Final properties:
+  Font: "${ctx.font}"
+  Fill: ${ctx.fillStyle}
+  Stroke: ${ctx.strokeStyle}
+  Line width: ${ctx.lineWidth}
+  Text align: ${ctx.textAlign}
+  Text baseline: ${ctx.textBaseline}`);
+        
+        // Test font with extensive debugging
+        console.log('🧪 Testing font rendering...');
+        try {
+            const testMetrics = ctx.measureText('TEST');
+            console.log(`📏 Font test results:
+  Width: ${testMetrics.width}
+  Height: ${testMetrics.actualBoundingBoxAscent + testMetrics.actualBoundingBoxDescent}
+  Font working: ${testMetrics.width > 0 ? 'YES' : 'NO'}`);
+            
+            if (testMetrics.width === 0) {
+                throw new Error('Font measurement returned zero width');
+            }
+            
+        } catch (testError) {
+            console.error(`❌ Font test failed: ${testError.message}`);
+            console.log('🚨 Forcing basic font recovery...');
+            
+            // Force absolute basic font
+            ctx.font = '20px Arial';
+            const recoveryTest = ctx.measureText('TEST');
+            console.log(`🔧 Recovery test: width=${recoveryTest.width}`);
+        }
+        
+        // Ultra-debugged text drawing with state verification
         function drawMemeText(text, x, y, maxWidth) {
             if (!text || text.trim() === '') return;
             
             const sanitizedText = text.toString().trim().toUpperCase();
-            console.log(`📝 Drawing: "${sanitizedText}"`);
+            console.log(`\n📝 === DRAWING TEXT SESSION ===`);
+            console.log(`Text: "${sanitizedText}"`);
+            console.log(`Position: (${x}, ${y})`);
+            console.log(`Max width: ${maxWidth}`);
             
-            // Very simple word wrapping
+            // VERIFY canvas state before drawing
+            console.log(`🔍 Pre-draw canvas state:
+  Font: "${ctx.font}"
+  Fill style: ${ctx.fillStyle}
+  Stroke style: ${ctx.strokeStyle}
+  Line width: ${ctx.lineWidth}
+  Text align: ${ctx.textAlign}
+  Text baseline: ${ctx.textBaseline}`);
+            
+            // Test font again right before drawing
+            try {
+                const preDrawTest = ctx.measureText('X');
+                console.log(`🧪 Pre-draw font test: width=${preDrawTest.width} ${preDrawTest.width > 0 ? '✅' : '❌'}`);
+                
+                if (preDrawTest.width === 0) {
+                    console.log('🚨 Font broken! Attempting reset...');
+                    ctx.font = `bold ${fontSize}px Arial`;
+                    const resetTest = ctx.measureText('X');
+                    console.log(`🔧 Reset test: width=${resetTest.width}`);
+                }
+            } catch (preTestError) {
+                console.error(`❌ Pre-draw test failed: ${preTestError.message}`);
+            }
+            
+            // Simple word wrapping with debugging
             const words = sanitizedText.split(' ');
             const lines = [];
             let currentLine = '';
             
+            console.log(`📋 Processing ${words.length} words: ${JSON.stringify(words)}`);
+            
             for (const word of words) {
                 const testLine = currentLine + (currentLine ? ' ' : '') + word;
-                // Simple character-based width estimation
                 if (testLine.length * fontSize * 0.6 > maxWidth && currentLine) {
                     lines.push(currentLine);
                     currentLine = word;
@@ -8704,52 +8818,85 @@ async function handleCaptionCommand(interaction) {
             
             if (currentLine) lines.push(currentLine);
             
+            console.log(`📄 Created ${lines.length} lines: ${JSON.stringify(lines)}`);
+            
             // Simple line positioning
             const lineHeight = fontSize * 1.1;
             const startY = y - ((lines.length - 1) * lineHeight) / 2;
             
-            // Draw each line with maximum reliability
+            console.log(`📐 Line positioning:
+  Line height: ${lineHeight}
+  Start Y: ${startY}
+  Total lines: ${lines.length}`);
+            
+            // Draw each line with extensive debugging
             lines.forEach((line, index) => {
                 const lineY = startY + (index * lineHeight);
                 
-                console.log(`  Line ${index + 1}: "${line}" at y=${lineY}`);
+                console.log(`\n🎨 Drawing line ${index + 1}/${lines.length}: "${line}"`);
+                console.log(`   Position: (${x}, ${lineY})`);
                 
                 try {
+                    // Save state before each line
+                    ctx.save();
+                    
+                    console.log(`   🔍 Canvas state check:
+     Font: "${ctx.font}"
+     Fill: ${ctx.fillStyle}
+     Stroke: ${ctx.strokeStyle}
+     Line width: ${ctx.lineWidth}`);
+                    
                     // Method 1: Thick black stroke
+                    console.log(`   📝 Step 1: Black stroke...`);
                     ctx.strokeStyle = 'black';
-                    ctx.lineWidth = Math.max(fontSize / 5, 8); // Very thick
+                    ctx.lineWidth = Math.max(fontSize / 5, 8);
                     ctx.strokeText(line, x, lineY);
+                    console.log(`   ✅ Step 1 complete`);
                     
                     // Method 2: White fill
+                    console.log(`   📝 Step 2: White fill...`);
                     ctx.fillStyle = 'white';
                     ctx.fillText(line, x, lineY);
+                    console.log(`   ✅ Step 2 complete`);
                     
-                    // Method 3: Extra black shadows for contrast
+                    // Method 3: Extra shadows
+                    console.log(`   📝 Step 3: Black shadows...`);
                     ctx.fillStyle = 'black';
                     ctx.fillText(line, x + 3, lineY + 3);
                     ctx.fillText(line, x - 2, lineY - 2);
                     ctx.fillText(line, x + 2, lineY - 2);
                     ctx.fillText(line, x - 2, lineY + 2);
+                    console.log(`   ✅ Step 3 complete`);
                     
                     // Method 4: Final white text
+                    console.log(`   📝 Step 4: Final white text...`);
                     ctx.fillStyle = 'white';
                     ctx.fillText(line, x, lineY);
+                    console.log(`   ✅ Step 4 complete`);
                     
-                    console.log(`    ✅ Success`);
+                    // Restore state
+                    ctx.restore();
+                    
+                    console.log(`   🎉 Line "${line}" rendered successfully!`);
                     
                 } catch (error) {
-                    console.error(`    ❌ Failed: ${error.message}`);
+                    console.error(`   💥 ERROR rendering line "${line}": ${error.message}`);
+                    console.error(`   📊 Error details:`, error);
                     
-                    // Emergency: just draw white text
+                    // Emergency fallback with debugging
                     try {
+                        console.log(`   🚨 Attempting emergency fallback...`);
                         ctx.fillStyle = 'white';
                         ctx.fillText(line, x, lineY);
-                        console.log(`    🔧 Emergency fallback used`);
+                        console.log(`   🔧 Emergency fallback succeeded`);
                     } catch (emergencyError) {
-                        console.error(`    💥 Complete failure: ${emergencyError.message}`);
+                        console.error(`   � Emergency fallback failed: ${emergencyError.message}`);
+                        console.error(`   📊 Emergency error details:`, emergencyError);
                     }
                 }
             });
+            
+            console.log(`📝 === TEXT SESSION COMPLETE ===\n`);
         }
         
         // Enhanced text positioning for longer text support
@@ -8810,10 +8957,24 @@ async function handleCaptionCommand(interaction) {
             files: [captionedImage] 
         });
         
-        console.log('Meme created successfully!');
+        // Force cleanup after successful generation
+        if (global.gc) {
+            global.gc();
+            console.log('🧹 Post-generation memory cleanup performed');
+        }
+        
+        console.log('✅ Meme created successfully!');
+        console.log(`=== MEME GENERATION COMPLETE ===\n`);
         
     } catch (error) {
-        console.error('Error creating meme:', error);
+        console.error('❌ Error creating meme:', error);
+        console.error('Stack trace:', error.stack);
+        
+        // Force cleanup on error too
+        if (global.gc) {
+            global.gc();
+            console.log('🧹 Error cleanup performed');
+        }
         
         // Check if we can still edit the reply
         try {
