@@ -200,6 +200,31 @@ class Database {
             )
         `);
 
+        // Cheese Clicker game tables
+        this.db.run(`
+            CREATE TABLE IF NOT EXISTS cheese_clicker_players (
+                user_id TEXT,
+                guild_id TEXT,
+                cheese_count REAL DEFAULT 0,
+                total_cheese_clicked REAL DEFAULT 0,
+                cheese_per_second REAL DEFAULT 0,
+                cheese_per_click REAL DEFAULT 1,
+                last_updated INTEGER DEFAULT (strftime('%s', 'now')),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, guild_id)
+            )
+        `);
+
+        this.db.run(`
+            CREATE TABLE IF NOT EXISTS cheese_clicker_upgrades (
+                user_id TEXT,
+                guild_id TEXT,
+                upgrade_id TEXT,
+                quantity INTEGER DEFAULT 0,
+                PRIMARY KEY (user_id, guild_id, upgrade_id)
+            )
+        `);
+
         this.db.run(`
             CREATE TABLE IF NOT EXISTS ticket_messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2339,6 +2364,118 @@ class Database {
                         }
                     }
                     resolve(updates);
+                }
+            );
+        });
+    }
+
+    // Cheese Clicker Game Methods
+    async getCheeseClickerPlayer(userId, guildId) {
+        return new Promise((resolve, reject) => {
+            this.db.get(
+                'SELECT * FROM cheese_clicker_players WHERE user_id = ? AND guild_id = ?',
+                [userId, guildId],
+                (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                }
+            );
+        });
+    }
+
+    async createCheeseClickerPlayer(userId, guildId) {
+        return new Promise((resolve, reject) => {
+            this.db.run(
+                `INSERT OR REPLACE INTO cheese_clicker_players 
+                 (user_id, guild_id, cheese_count, total_cheese_clicked, cheese_per_second, cheese_per_click) 
+                 VALUES (?, ?, 0, 0, 0, 1)`,
+                [userId, guildId],
+                function(err) {
+                    if (err) reject(err);
+                    else resolve(this.lastID);
+                }
+            );
+        });
+    }
+
+    async updateCheeseClickerPlayer(userId, guildId, data) {
+        return new Promise((resolve, reject) => {
+            const fields = [];
+            const values = [];
+            
+            if (data.cheese_count !== undefined) {
+                fields.push('cheese_count = ?');
+                values.push(data.cheese_count);
+            }
+            if (data.total_cheese_clicked !== undefined) {
+                fields.push('total_cheese_clicked = ?');
+                values.push(data.total_cheese_clicked);
+            }
+            if (data.cheese_per_second !== undefined) {
+                fields.push('cheese_per_second = ?');
+                values.push(data.cheese_per_second);
+            }
+            if (data.cheese_per_click !== undefined) {
+                fields.push('cheese_per_click = ?');
+                values.push(data.cheese_per_click);
+            }
+            
+            fields.push('last_updated = ?');
+            values.push(Math.floor(Date.now() / 1000));
+            
+            values.push(userId, guildId);
+            
+            this.db.run(
+                `UPDATE cheese_clicker_players SET ${fields.join(', ')} WHERE user_id = ? AND guild_id = ?`,
+                values,
+                function(err) {
+                    if (err) reject(err);
+                    else resolve(this.changes);
+                }
+            );
+        });
+    }
+
+    async getCheeseClickerUpgrades(userId, guildId) {
+        return new Promise((resolve, reject) => {
+            this.db.all(
+                'SELECT * FROM cheese_clicker_upgrades WHERE user_id = ? AND guild_id = ?',
+                [userId, guildId],
+                (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows || []);
+                }
+            );
+        });
+    }
+
+    async updateCheeseClickerUpgrade(userId, guildId, upgradeId, quantity) {
+        return new Promise((resolve, reject) => {
+            this.db.run(
+                `INSERT OR REPLACE INTO cheese_clicker_upgrades 
+                 (user_id, guild_id, upgrade_id, quantity) 
+                 VALUES (?, ?, ?, ?)`,
+                [userId, guildId, upgradeId, quantity],
+                function(err) {
+                    if (err) reject(err);
+                    else resolve(this.lastID);
+                }
+            );
+        });
+    }
+
+    async getCheeseClickerLeaderboard(guildId, limit = 10) {
+        return new Promise((resolve, reject) => {
+            this.db.all(
+                `SELECT user_id, cheese_count, total_cheese_clicked, cheese_per_second 
+                 FROM cheese_clicker_players 
+                 WHERE guild_id = ? 
+                 ORDER BY cheese_count DESC 
+                 LIMIT ?`,
+                [guildId, limit],
+                (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows || []);
                 }
             );
         });

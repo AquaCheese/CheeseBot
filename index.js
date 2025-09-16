@@ -28,6 +28,7 @@ const Database = require('./database');
 const SetupSystem = require('./setup');
 const ModerationSystem = require('./moderation');
 const AuthenticationSystem = require('./authentication');
+const CheeseClicker = require('./cheese-clicker');
 
 // Create a new client instance
 const client = new Client({
@@ -47,6 +48,7 @@ const database = new Database();
 const setupSystem = new SetupSystem(database);
 const moderationSystem = new ModerationSystem(database);
 const authSystem = new AuthenticationSystem(database);
+const cheeseClicker = new CheeseClicker(database);
 
 // Store slash commands
 client.commands = new Collection();
@@ -213,6 +215,19 @@ const commands = [
                 .setDescription('Text to convert to ASCII art (12 chars max for best results)')
                 .setRequired(true)
                 .setMaxLength(12)),
+
+    new SlashCommandBuilder()
+        .setName('cheeseclicker')
+        .setDescription('Play the ultimate cheese clicking game! Build your cheese empire!')
+        .addStringOption(option =>
+            option.setName('action')
+                .setDescription('Choose what to do')
+                .setRequired(false)
+                .addChoices(
+                    { name: '🧀 Play Game', value: 'game' },
+                    { name: '🛒 Shop', value: 'shop' },
+                    { name: '📊 Stats', value: 'stats' }
+                )),
 
     new SlashCommandBuilder()
         .setName('suggest')
@@ -666,6 +681,10 @@ const commands = [
         .setName('fontsetup')
         .setDescription('Get instructions for installing the Impact font for better meme quality')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    
+    new SlashCommandBuilder()
+        .setName('cheeseclicker')
+        .setDescription('Play the cheese clicker game! Click cheese and buy upgrades to become the ultimate cheese master'),
     
     new SlashCommandBuilder()
         .setName('goal')
@@ -1516,12 +1535,30 @@ async function handleButton(interaction) {
             const guildId = customId.replace('reset_config_', '');
             await handleResetConfig(interaction, guildId);
         } else if (customId.startsWith('view_setup_details_')) {
-            const historyId = customId.replace('view_setup_details_', '');
-            await handleViewSetupDetails(interaction, historyId);
+            const guildId = customId.replace('view_setup_details_', '');
+            await handleViewSetupDetails(interaction, guildId);
+        }
+        // Backup import confirmation buttons
+        else if (customId.startsWith('backup_confirm_import_')) {
+            await handleBackupConfirmImport(interaction);
+        } else if (customId.startsWith('backup_cancel_import_')) {
+            await handleBackupCancelImport(interaction);
         }
         
-        // Configuration reset confirmation buttons
-        else if (customId.startsWith('confirm_reset_')) {
+        // Cheese Clicker buttons
+        else if (customId === 'cheese_click') {
+            await handleCheeseClick(interaction);
+        } else if (customId === 'cheese_shop') {
+            await handleCheeseShop(interaction);
+        } else if (customId === 'cheese_stats') {
+            await handleCheeseStats(interaction);
+        } else if (customId === 'cheese_game') {
+            await handleCheeseGame(interaction);
+        } else if (customId.startsWith('buy_')) {
+            await handleCheeseBuyUpgrade(interaction);
+        } else if (customId.startsWith('shop_page_')) {
+            await handleCheeseShopPage(interaction);
+        } else if (customId.startsWith('confirm_reset_')) {
             const guildId = customId.replace('confirm_reset_', '');
             await handleConfirmReset(interaction, guildId);
         } else if (customId.startsWith('cancel_reset_')) {
@@ -2118,7 +2155,7 @@ async function handleSlashCommand(interaction) {
 
     try {
         // Commands that don't require authentication
-        const publicCommands = ['login', 'status', 'afk', 'ascii', 'suggest', 'report', 'birthday', 'anonymous', 'userstats', 'countleaderboard', 'counthistory', 'yt', 'aquacheese', 'caption', 'goal'];
+        const publicCommands = ['login', 'status', 'afk', 'ascii', 'suggest', 'report', 'birthday', 'anonymous', 'userstats', 'countleaderboard', 'counthistory', 'yt', 'aquacheese', 'caption', 'goal', 'cheeseclicker'];
         
         if (!publicCommands.includes(commandName)) {
             // Special check for user command - only primary admin can use it
@@ -2322,6 +2359,10 @@ async function handleSlashCommand(interaction) {
             
             case 'goal':
                 await handleGoalCommand(interaction);
+                break;
+            
+            case 'cheeseclicker':
+                await handleCheeseClickerCommand(interaction);
                 break;
             
             case 'testnotification':
@@ -10135,16 +10176,203 @@ async function handleGoalCompletion(interaction, goal, currentProgress, manualCe
         });
         
         // Add reactions for celebration
-        try {
-            await celebrationMessage.react('🎉');
-            await celebrationMessage.react('🎊');
-            await celebrationMessage.react('🥳');
-        } catch (reactionError) {
-            console.log('Could not add celebration reactions:', reactionError.message);
+        await celebrationMessage.react('🎉');
+        await celebrationMessage.react('🎊');
+        
+    } catch (error) {
+        console.error('Goal completion celebration error:', error);
+    }
+}
+// Cheese Clicker Command Handler
+async function handleCheeseClickerCommand(interaction) {
+    try {
+        await interaction.deferReply();
+        
+        const action = interaction.options.getString('action') || 'game';
+        
+        let embed, components;
+        
+        switch (action) {
+            case 'shop':
+                embed = await cheeseClicker.createShopEmbed(interaction.user.id, 0);
+                components = cheeseClicker.createShopButtons(0);
+                break;
+            case 'stats':
+                embed = await cheeseClicker.createStatsEmbed(interaction.user.id);
+                components = [cheeseClicker.createGameButtons()];
+                break;
+            default: // 'game' or any other value
+                embed = await cheeseClicker.createGameEmbed(interaction.user.id);
+                components = [cheeseClicker.createGameButtons()];
+                break;
+        }
+        
+        await interaction.editReply({
+            embeds: [embed],
+            components: components
+        });
+        
+    } catch (error) {
+        console.error('Cheese clicker command error:', error);
+        const errorResponse = {
+            content: '❌ There was an error starting the cheese clicker game!',
+            ephemeral: true
+        };
+        
+        if (interaction.deferred) {
+            await interaction.editReply(errorResponse);
+        } else {
+            await interaction.reply(errorResponse);
+        }
+    }
+}
+
+// Cheese Clicker Button Handlers
+async function handleCheeseClick(interaction) {
+    try {
+        await interaction.deferUpdate();
+        
+        // Add cheese from clicking
+        await cheeseClicker.clickCheese(interaction.user.id);
+        
+        // Update the embed with new cheese count
+        const embed = await cheeseClicker.createGameEmbed(interaction.user.id);
+        const buttons = cheeseClicker.createGameButtons();
+        
+        await interaction.editReply({
+            embeds: [embed],
+            components: [buttons]
+        });
+        
+    } catch (error) {
+        console.error('Cheese click error:', error);
+        await interaction.followUp({ 
+            content: '❌ Error clicking cheese!', 
+            ephemeral: true 
+        });
+    }
+}
+
+async function handleCheeseShop(interaction) {
+    try {
+        await interaction.deferUpdate();
+        
+        const embed = await cheeseClicker.createShopEmbed(interaction.user.id, 0);
+        const components = cheeseClicker.createShopButtons(0);
+        
+        await interaction.editReply({
+            embeds: [embed],
+            components: components
+        });
+        
+    } catch (error) {
+        console.error('Cheese shop error:', error);
+        await interaction.followUp({ 
+            content: '❌ Error loading shop!', 
+            ephemeral: true 
+        });
+    }
+}
+
+async function handleCheeseStats(interaction) {
+    try {
+        await interaction.deferUpdate();
+        
+        const embed = await cheeseClicker.createStatsEmbed(interaction.user.id);
+        const buttons = cheeseClicker.createGameButtons();
+        
+        await interaction.editReply({
+            embeds: [embed],
+            components: [buttons]
+        });
+        
+    } catch (error) {
+        console.error('Cheese stats error:', error);
+        await interaction.followUp({ 
+            content: '❌ Error loading stats!', 
+            ephemeral: true 
+        });
+    }
+}
+
+async function handleCheeseGame(interaction) {
+    try {
+        await interaction.deferUpdate();
+        
+        const embed = await cheeseClicker.createGameEmbed(interaction.user.id);
+        const buttons = cheeseClicker.createGameButtons();
+        
+        await interaction.editReply({
+            embeds: [embed],
+            components: [buttons]
+        });
+        
+    } catch (error) {
+        console.error('Cheese game error:', error);
+        await interaction.followUp({ 
+            content: '❌ Error loading game!', 
+            ephemeral: true 
+        });
+    }
+}
+
+async function handleCheeseBuyUpgrade(interaction) {
+    try {
+        await interaction.deferUpdate();
+        
+        const upgradeType = interaction.customId.replace('buy_', '');
+        const result = await cheeseClicker.buyUpgrade(interaction.user.id, upgradeType);
+        
+        if (result.success) {
+            // Show updated shop with purchase confirmation
+            const embed = await cheeseClicker.createShopEmbed(interaction.user.id, 0);
+            const components = cheeseClicker.createShopButtons(0);
+            
+            await interaction.editReply({
+                embeds: [embed],
+                components: components
+            });
+            
+            // Send confirmation message
+            await interaction.followUp({
+                content: `🎉 **Purchased ${result.upgradeName}!** You now have **${result.newQuantity}** of them. Cost: **${cheeseClicker.formatNumber(result.cost)}** cheese.`,
+                ephemeral: true
+            });
+        } else {
+            await interaction.followUp({
+                content: '❌ **Not enough cheese!** Keep clicking to earn more cheese.',
+                ephemeral: true
+            });
         }
         
     } catch (error) {
-        console.error('Error handling goal completion:', error);
+        console.error('Cheese buy upgrade error:', error);
+        await interaction.followUp({ 
+            content: '❌ Error buying upgrade!', 
+            ephemeral: true 
+        });
+    }
+}
+
+async function handleCheeseShopPage(interaction) {
+    try {
+        await interaction.deferUpdate();
+        
+        const page = parseInt(interaction.customId.replace('shop_page_', ''));
+        const embed = await cheeseClicker.createShopEmbed(interaction.user.id, page);
+        const components = cheeseClicker.createShopButtons(page);
+        
+        await interaction.editReply({
+            embeds: [embed],
+            components: components
+        });
+        
+    } catch (error) {
+        console.error('Cheese shop page error:', error);
+        await interaction.followUp({ 
+            content: '❌ Error changing page!', 
+            ephemeral: true 
+        });
     }
 }
 
