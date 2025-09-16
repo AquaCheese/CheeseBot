@@ -683,10 +683,6 @@ const commands = [
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     
     new SlashCommandBuilder()
-        .setName('cheeseclicker')
-        .setDescription('Play the cheese clicker game! Click cheese and buy upgrades to become the ultimate cheese master'),
-    
-    new SlashCommandBuilder()
         .setName('goal')
         .setDescription('Manage server goals and progress tracking')
         .addSubcommand(subcommand =>
